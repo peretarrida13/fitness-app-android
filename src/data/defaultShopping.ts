@@ -1,0 +1,58 @@
+import type { ShoppingData } from '@/types/shopping'
+
+export const SHOPPING: ShoppingData = {
+  "Meat & Fish": [
+    { name: "Chicken breast", qty: "~1.2 kg" },
+    { name: "Chicken thighs", qty: "~750g" },
+    { name: "Lean beef mince", qty: "~500g" },
+    { name: "Sirloin steak", qty: "~300g" },
+    { name: "Turkey breast", qty: "~200g" },
+    { name: "Salmon fillet", qty: "~400g" },
+    { name: "Tuna steak", qty: "~200g" },
+    { name: "Canned tuna in water", qty: "2–3 cans" },
+    { name: "Shrimp, peeled", qty: "~200g" },
+  ],
+  "Dairy & Eggs": [
+    { name: "Eggs", qty: "18 pcs" },
+    { name: "Greek yoghurt 0%", qty: "~1 kg" },
+    { name: "Quark / cottage cheese", qty: "~400g" },
+    { name: "Milk", qty: "1 litre" },
+    { name: "Cheddar cheese", qty: "~100g" },
+    { name: "Butter", qty: "1 pack" },
+    { name: "Sour cream", qty: "1 tub" },
+  ],
+  "Carbs & Grains": [
+    { name: "White rice", qty: "1–2 kg" },
+    { name: "Pasta (spaghetti/penne)", qty: "~500g" },
+    { name: "Oats", qty: "~500g" },
+    { name: "Wholegrain bread", qty: "1 loaf" },
+    { name: "Wholegrain wraps / tortillas", qty: "1 pack" },
+    { name: "Potatoes", qty: "~1 kg" },
+    { name: "Sweet potato", qty: "~1 kg" },
+    { name: "Rice cakes", qty: "1 pack" },
+    { name: "Granola (no added sugar)", qty: "~300g" },
+  ],
+  "Fruit": [
+    { name: "Bananas", qty: "~8 pcs" },
+    { name: "Apples", qty: "~6 pcs" },
+    { name: "Oranges", qty: "~3 pcs" },
+    { name: "Blueberries", qty: "1–2 punnets" },
+    { name: "Strawberries", qty: "1 punnet" },
+  ],
+  "Oils, Sauces & Extras": [
+    { name: "Olive oil", qty: "1 bottle" },
+    { name: "Honey", qty: "1 jar" },
+    { name: "Peanut butter", qty: "1 jar" },
+    { name: "Almond butter", qty: "1 jar" },
+    { name: "Soy sauce", qty: "1 bottle" },
+    { name: "Sesame oil", qty: "1 bottle" },
+    { name: "Teriyaki sauce", qty: "1 bottle" },
+    { name: "Passata / smooth pasta sauce", qty: "2 jars" },
+    { name: "Mayonnaise", qty: "1 jar" },
+    { name: "Mustard", qty: "1 jar" },
+    { name: "Hummus", qty: "1 tub" },
+  ],
+  "Supplements": [
+    { name: "Whey protein powder", qty: "1 kg tub" },
+  ],
+}

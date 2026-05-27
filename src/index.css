@@ -1,0 +1,65 @@
+@import "tailwindcss";
+
+:root {
+  --bg:       #0a0a0f;
+  --bg2:      #111118;
+  --bg3:      #16161f;
+  --card:     #1a1a26;
+  --card2:    #1f1f2e;
+  --edge:     #252535;
+  --accent:   #5b8dee;
+  --accent2:  #7aa5f5;
+  --accentbg: rgba(91,141,238,0.10);
+  --accentbd: rgba(91,141,238,0.25);
+  --gold:     #f0c060;
+  --goldbg:   rgba(240,192,96,0.08);
+  --goldbd:   rgba(240,192,96,0.22);
+  --red:      #ee6b6b;
+  --redbg:    rgba(238,107,107,0.08);
+  --redbd:    rgba(238,107,107,0.22);
+  --green:    #56c99a;
+  --greenbg:  rgba(86,201,154,0.08);
+  --text:     #f0f0fa;
+  --text2:    #8888aa;
+  --text3:    #44445a;
+  --border:   rgba(255,255,255,0.06);
+  --border2:  rgba(255,255,255,0.10);
+  --radius:   14px;
+  --radius-sm: 9px;
+
+  /* shadcn overrides */
+  --background:         var(--bg);
+  --foreground:         var(--text);
+  --primary:            var(--accent);
+  --primary-foreground: #ffffff;
+  --secondary:          var(--bg3);
+  --secondary-foreground: var(--text2);
+  --muted:              var(--bg3);
+  --muted-foreground:   var(--text3);
+  --destructive:        var(--red);
+  --destructive-foreground: #ffffff;
+  --input:              var(--edge);
+  --ring:               var(--accent);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { font-size: 16px; -webkit-text-size-adjust: 100%; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Space Grotesk for all display headings */
+h1, h2, h3 {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
