@@ -11,6 +11,7 @@ import { DAYS } from '@/data/defaultMeals'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useWaterStore } from '@/store/useWaterStore'
 import { RecoveryCard } from '@/components/home/RecoveryCard'
+import { WhoopDashboard } from '@/components/whoop/WhoopDashboard'
 import { DailyInputModal } from '@/components/home/DailyInputModal'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -79,6 +80,7 @@ export function HomePage() {
 
   return (
     <div style={{ padding: '0 16px 96px' }}>
+      <WhoopDashboard />
       {/* Header */}
       <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 0 16px' }}>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>{dateLabel}</div>
