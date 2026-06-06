@@ -50,7 +50,7 @@ export function MealsPage() {
           background: 'rgba(10,10,15,0.92)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
-          padding: '48px 20px 0',
+          padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 0',
           position: 'sticky', top: 0, zIndex: 100,
           borderBottom: '1px solid var(--border)',
         }}
