@@ -4,10 +4,14 @@ import type { Exercise } from '@/types/gym'
 interface Props {
   exercise: Exercise
   isCardio?: boolean
+  lastPR?: { weight_kg: number; reps: number }
+  onLogPR?: (kg: number, reps: number) => void
 }
 
-export function ExerciseCard({ exercise, isCardio = false }: Props) {
+export function ExerciseCard({ exercise, isCardio = false, lastPR, onLogPR }: Props) {
   const [open, setOpen] = useState(false)
+  const [prKg, setPrKg] = useState('')
+  const [prReps, setPrReps] = useState('')
 
   const badgeStyle = exercise.type === 'compound'
     ? { background: 'rgba(240,192,96,0.12)', color: 'var(--gold)' }
@@ -16,6 +20,15 @@ export function ExerciseCard({ exercise, isCardio = false }: Props) {
       : { background: 'var(--accentbg)', color: 'var(--accent2)' }
 
   const badgeLabel = exercise.type === 'compound' ? 'Compound' : exercise.type === 'cardio' ? exercise.badge ?? 'Cardio' : 'Accessory'
+
+  function handleLogPR() {
+    const kg = parseFloat(prKg)
+    const reps = parseInt(prReps)
+    if (isNaN(kg) || kg <= 0 || isNaN(reps) || reps < 1) return
+    onLogPR?.(kg, reps)
+    setPrKg('')
+    setPrReps('')
+  }
 
   return (
     <div
@@ -81,6 +94,11 @@ export function ExerciseCard({ exercise, isCardio = false }: Props) {
                 </span>
               </div>
               <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>{exercise.muscle}</div>
+              {lastPR && (
+                <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 3 }}>
+                  Best: {lastPR.weight_kg} kg × {lastPR.reps} reps
+                </div>
+              )}
             </div>
             <div
               style={{
@@ -169,8 +187,64 @@ export function ExerciseCard({ exercise, isCardio = false }: Props) {
               ))}
             </div>
           )}
+
+          {/* Quick PR log */}
+          {!isCardio && onLogPR && (
+            <div style={{
+              padding: '12px 14px',
+              borderTop: '1px solid var(--border)',
+            }}>
+              <div style={{
+                fontSize: 10, fontWeight: 600, color: 'var(--text3)',
+                textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 8,
+              }}>
+                Log PR
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <input
+                  type="number"
+                  placeholder="kg"
+                  step="0.5"
+                  value={prKg}
+                  onChange={(e) => setPrKg(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={inputStyle}
+                />
+                <span style={{ color: 'var(--text3)', fontSize: 12 }}>×</span>
+                <input
+                  type="number"
+                  placeholder="reps"
+                  value={prReps}
+                  onChange={(e) => setPrReps(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ ...inputStyle, width: 60 }}
+                />
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleLogPR() }}
+                  disabled={!prKg || !prReps}
+                  style={{
+                    padding: '8px 14px', background: 'var(--accent)',
+                    border: 'none', borderRadius: 'var(--radius-sm)',
+                    color: '#fff', fontSize: 12, fontWeight: 600,
+                    cursor: prKg && prReps ? 'pointer' : 'not-allowed',
+                    opacity: prKg && prReps ? 1 : 0.5,
+                    flexShrink: 0,
+                  }}
+                >
+                  Log
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
   )
+}
+
+const inputStyle: React.CSSProperties = {
+  flex: 1, padding: '8px 10px',
+  background: 'var(--bg2)', border: '1px solid var(--edge)',
+  borderRadius: 'var(--radius-sm)', color: 'var(--text)',
+  fontSize: 13, outline: 'none', minWidth: 0,
 }

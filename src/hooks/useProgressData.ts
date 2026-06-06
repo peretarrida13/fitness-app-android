@@ -183,6 +183,34 @@ export function useHealthData(days = 30) {
   })
 }
 
+// ─── Manual activity logging ───────────────────────────────────────────────
+
+export function useLogManualActivity() {
+  const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  return useMutation({
+    mutationFn: async (payload: {
+      activity_date: string
+      activity_type: string
+      name?: string
+      duration_seconds?: number
+      distance_meters?: number
+      avg_heart_rate?: number
+      calories?: number
+    }) => {
+      const { error } = await supabase.from('activities').insert({
+        user_id: user!.id,
+        garmin_activity_id: null,
+        is_manual: true,
+        synced_at: new Date().toISOString(),
+        ...payload,
+      })
+      if (error) throw error
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['activities'] }),
+  })
+}
+
 // ─── Workout history (reuse existing workout_logs) ─────────────────────────
 
 export function useWorkoutHistory(days = 84) {

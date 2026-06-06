@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">FitTracker</string>
+    <string name="title_activity_main">FitTracker</string>
+    <string name="package_name">com.peretarrida.fittracker</string>
+    <string name="custom_url_scheme">com.peretarrida.fittracker</string>
+</resources>

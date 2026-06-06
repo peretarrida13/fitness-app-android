@@ -47,8 +47,10 @@ export function PRsTab() {
   async function handleAdd(exerciseName: string) {
     const kg = parseFloat(form.weight_kg)
     const reps = parseInt(form.reps)
-    if (isNaN(kg) || isNaN(reps) || kg <= 0 || reps <= 0) return
-    await addPR.mutateAsync({ exercise_name: exerciseName, weight_kg: kg, reps, note: form.note || undefined })
+    if (isNaN(kg) || kg <= 0 || kg > 500) return
+    if (isNaN(reps) || reps < 1 || reps > 100) return
+    const note = form.note.slice(0, 200) || undefined
+    await addPR.mutateAsync({ exercise_name: exerciseName, weight_kg: kg, reps, note })
     setForm({ weight_kg: '', reps: '', note: '' })
     setExpanded(exerciseName)
   }
@@ -181,8 +183,9 @@ export function PRsTab() {
           />
           <button
             onClick={() => {
-              if (newExercise.trim()) {
-                setExpanded(newExercise.trim())
+              const name = newExercise.trim().slice(0, 100)
+              if (name) {
+                setExpanded(name)
                 setNewExercise('')
               }
               setAddingCustom(false)

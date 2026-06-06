@@ -1,10 +1,11 @@
-import { useEffect } from 'react'
 import { useCalendarStore } from '@/store/useCalendarStore'
 import { useAuthStore } from '@/store/useAuthStore'
+import { useNavigate } from 'react-router-dom'
 import {
   useWorkoutLogs, useLogWorkout, useDeleteWorkoutLog,
-  useDailyActivity, useGarminSync, useActivities,
+  useDailyActivity, useActivities,
 } from '@/hooks/useCalendarData'
+import { useHabits, useHabitLogsForWeek } from '@/hooks/useHabitData'
 import { useGoogleCalendarEvents } from '@/hooks/useGoogleCalendar'
 import { GYM_DAYS } from '@/data/defaultGym'
 import { DAYS } from '@/data/defaultMeals'
@@ -16,10 +17,11 @@ import { CalendarDayCell } from './CalendarDayCell'
 export function CalendarPage() {
   const {
     weekOffset, getWeekStart, prevWeek, nextWeek, resetToToday,
-    googleAccessToken, garminConnected,
-    setGoogleToken, setGarminConnected,
+    googleAccessToken,
+    setGoogleToken,
   } = useCalendarStore()
   const { user } = useAuthStore()
+  const navigate = useNavigate()
 
   const weekStart = getWeekStart()
   const weekDays = getWeekDays(weekStart)
@@ -28,18 +30,10 @@ export function CalendarPage() {
   const { data: activityMap } = useDailyActivity(weekStart)
   const { data: activitiesMap } = useActivities(weekStart)
   const { data: googleEvents } = useGoogleCalendarEvents(weekStart, googleAccessToken)
+  const { data: habits = [] } = useHabits()
+  const { data: habitLogsMap } = useHabitLogsForWeek(weekStart)
   const logWorkout = useLogWorkout()
   const deleteLog = useDeleteWorkoutLog()
-  const garminSync = useGarminSync()
-
-  // Detect ?garmin=connected redirect
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    if (params.get('garmin') === 'connected') {
-      setGarminConnected(true)
-      window.history.replaceState({}, '', window.location.pathname)
-    }
-  }, [setGarminConnected])
 
   return (
     <div style={{ paddingBottom: 80 }}>
@@ -53,9 +47,6 @@ export function CalendarPage() {
 
       {user && (
         <CalendarConnectBar
-          garminConnected={garminConnected}
-          garminSyncing={garminSync.isPending}
-          onSyncGarmin={() => garminSync.mutate(toDateStr(weekStart))}
           googleConnected={!!googleAccessToken}
           onGoogleToken={(token) => setGoogleToken(token)}
           onGoogleDisconnect={() => setGoogleToken(null)}
@@ -73,6 +64,9 @@ export function CalendarPage() {
           const runs = activitiesMap?.get(dateStr) ?? []
           const events = googleEvents?.get(dateStr) ?? []
 
+          const habitsDone = habitLogsMap?.get(dateStr)?.size ?? 0
+          const habitsTotal = habits.length
+
           return (
             <CalendarDayCell
               key={dateStr}
@@ -84,10 +78,13 @@ export function CalendarPage() {
               runs={runs}
               googleEvents={events}
               isToday={isToday(date)}
+              habitsDone={habitsDone}
+              habitsTotal={habitsTotal}
               onLogWorkout={() =>
                 logWorkout.mutate({ logged_date: dateStr, gym_day_index: dayIdx })
               }
               onDeleteLog={() => deleteLog.mutate(dateStr)}
+              onOpenDetail={() => navigate(`/calendar/${dateStr}`)}
             />
           )
         })}
@@ -98,7 +95,7 @@ export function CalendarPage() {
             border: '1px solid var(--edge)', borderRadius: 'var(--radius)',
             textAlign: 'center', fontSize: 13, color: 'var(--text3)',
           }}>
-            Sign in to log workouts, sync Garmin data, and connect Google Calendar.
+            Sign in to log workouts and connect Google Calendar.
           </div>
         )}
       </div>

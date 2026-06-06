@@ -2,8 +2,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/useAuthStore'
 import { toDateStr, getWeekDays } from '@/lib/dateUtils'
-import { syncGarminData } from '@/lib/garmin'
 import type { WorkoutLog, DailyActivity, Activity } from '@/types/supabase'
+import { GYM_DAYS } from '@/data/defaultGym'
+import { useWorkoutHistory } from '@/hooks/useProgressData'
 
 function weekDateRange(weekStart: Date) {
   const days = getWeekDays(weekStart)
@@ -36,11 +37,15 @@ export function useWorkoutLogs(weekStart: Date) {
 
 export function useLogWorkout() {
   const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
   return useMutation({
     mutationFn: async ({ logged_date, gym_day_index }: { logged_date: string; gym_day_index: number }) => {
       const { error } = await supabase
         .from('workout_logs')
-        .upsert({ logged_date, gym_day_index }, { onConflict: 'user_id,logged_date' })
+        .upsert(
+          { user_id: user!.id, logged_date, gym_day_index },
+          { onConflict: 'user_id,logged_date' }
+        )
       if (error) throw error
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['workout_logs'] }),
@@ -49,11 +54,13 @@ export function useLogWorkout() {
 
 export function useDeleteWorkoutLog() {
   const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
   return useMutation({
     mutationFn: async (logged_date: string) => {
       const { error } = await supabase
         .from('workout_logs')
         .delete()
+        .eq('user_id', user!.id)
         .eq('logged_date', logged_date)
       if (error) throw error
     },
@@ -108,10 +115,63 @@ export function useActivities(weekStart: Date) {
   })
 }
 
-export function useGarminSync() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: (startDate: string) => syncGarminData(startDate),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['daily_activity'] }),
+export function useTodayDailyActivity() {
+  const user = useAuthStore((s) => s.user)
+  const todayStr = toDateStr(new Date())
+  return useQuery({
+    queryKey: ['daily_activity_today', todayStr],
+    enabled: !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('daily_activity')
+        .select('*')
+        .eq('activity_date', todayStr)
+        .maybeSingle()
+      if (error) throw error
+      return data as DailyActivity | null
+    },
   })
+}
+
+export function useUpsertDailyActivity() {
+  const qc = useQueryClient()
+  const user = useAuthStore((s) => s.user)
+  return useMutation({
+    mutationFn: async (payload: Partial<Omit<DailyActivity, 'id' | 'user_id'>> & { activity_date: string }) => {
+      const { error } = await supabase
+        .from('daily_activity')
+        .upsert({ user_id: user!.id, ...payload }, { onConflict: 'user_id,activity_date' })
+      if (error) throw error
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['daily_activity'] })
+      qc.invalidateQueries({ queryKey: ['daily_activity_today'] })
+    },
+  })
+}
+
+function computeStreak(loggedDates: Set<string>): number {
+  let streak = 0
+  const today = new Date()
+  for (let i = 0; i < 60; i++) {
+    const d = new Date(today)
+    d.setDate(d.getDate() - i)
+    const dayIdx = (d.getDay() + 6) % 7
+    const gymDay = GYM_DAYS[dayIdx]
+    if (gymDay.isRest) continue
+    if (loggedDates.has(toDateStr(d))) {
+      streak++
+    } else if (i === 0) {
+      // today not yet logged — don't break streak
+    } else {
+      break
+    }
+  }
+  return streak
+}
+
+export function useWorkoutStreak(): number {
+  const { data: history = [] } = useWorkoutHistory(60)
+  const loggedSet = new Set(history.map((h) => h.logged_date))
+  return computeStreak(loggedSet)
 }

@@ -45,6 +45,7 @@
   - [ ] `GARMIN_CONSUMER_SECRET`
   - [ ] `APP_URL` = your Netlify URL
   - [ ] `SUPABASE_SERVICE_ROLE_KEY` (Supabase → Project Settings → API → service_role key)
+  - [ ] `GATE_PASSWORD` = your chosen app unlock password (replaces `VITE_APP_PASSWORD` — never put this in `.env.local`)
 - [ ] Deploy the edge functions:
   ```bash
   supabase login
@@ -52,7 +53,9 @@
   supabase functions deploy garmin-request-token
   supabase functions deploy garmin-oauth-callback
   supabase functions deploy garmin-sync
+  supabase functions deploy verify-gate-password
   ```
+- [ ] Remove `VITE_APP_PASSWORD` from `.env.local` (it's no longer used — password is verified server-side)
 
 ---
 

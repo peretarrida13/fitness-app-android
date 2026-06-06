@@ -3,8 +3,14 @@ import { GYM_DAYS } from '@/data/defaultGym'
 import { ExerciseCard } from './ExerciseCard'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLogWorkout, useDeleteWorkoutLog, useWorkoutLogs } from '@/hooks/useCalendarData'
+import { usePersonalRecords, useAddPR } from '@/hooks/useProgressData'
 import { toDateStr, getDayOfWeekIndex, getMondayOfWeek } from '@/lib/dateUtils'
 import { MuscleMap } from './MuscleMap'
+import type { PersonalRecord } from '@/types/supabase'
+
+function e1rm(weight: number, reps: number): number {
+  return weight / (1.0278 - 0.0278 * reps)
+}
 
 const DAY_LABELS = [
   'Mon · Push', 'Tue · Legs', 'Wed · Pull',
@@ -25,10 +31,21 @@ export function GymPage() {
   const deleteLog = useDeleteWorkoutLog()
   const todayLogged = workoutLogs?.get(todayStr) ?? null
 
+  const { data: allPRs = [] } = usePersonalRecords()
+  const addPR = useAddPR()
+
+  const bestPRMap = new Map<string, PersonalRecord>()
+  for (const pr of allPRs) {
+    const existing = bestPRMap.get(pr.exercise_name)
+    if (!existing || e1rm(pr.weight_kg, pr.reps) > e1rm(existing.weight_kg, existing.reps)) {
+      bestPRMap.set(pr.exercise_name, pr)
+    }
+  }
+
   return (
-    <div style={{ padding: '14px 16px' }}>
+    <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px' }}>
       {/* Sub header */}
-      <div style={{ padding: '20px 0 14px', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
+      <div style={{ padding: '12px 0 14px', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
         <h1 style={{ fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
           Gym Programme
         </h1>
@@ -207,7 +224,12 @@ export function GymPage() {
                 {section.label}
               </div>
               {section.exercises.map((ex) => (
-                <ExerciseCard key={ex.id} exercise={ex} />
+                <ExerciseCard
+                  key={ex.id}
+                  exercise={ex}
+                  lastPR={bestPRMap.get(ex.name)}
+                  onLogPR={user ? (kg, reps) => addPR.mutate({ exercise_name: ex.name, weight_kg: kg, reps }) : undefined}
+                />
               ))}
             </div>
           ))}

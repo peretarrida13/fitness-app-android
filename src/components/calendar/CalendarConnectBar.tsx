@@ -1,19 +1,16 @@
-import { Activity, Calendar, RefreshCw, LogOut } from 'lucide-react'
+import { Calendar, LogOut } from 'lucide-react'
 import { useGoogleLogin } from '@react-oauth/google'
+import { Capacitor } from '@capacitor/core'
 import { useAuthStore } from '@/store/useAuthStore'
-import { startGarminOAuth } from '@/lib/garmin'
+import { useGoogleAuthAndroid } from '@/hooks/useGoogleAuth'
 
 interface Props {
-  garminConnected: boolean
-  garminSyncing: boolean
-  onSyncGarmin: () => void
   googleConnected: boolean
   onGoogleToken: (token: string) => void
   onGoogleDisconnect: () => void
 }
 
 export function CalendarConnectBar({
-  garminConnected, garminSyncing, onSyncGarmin,
   googleConnected, onGoogleToken, onGoogleDisconnect,
 }: Props) {
   const { user, signOut } = useAuthStore()
@@ -23,6 +20,9 @@ export function CalendarConnectBar({
     onSuccess: (res) => onGoogleToken(res.access_token),
   })
 
+  const googleLoginAndroid = useGoogleAuthAndroid(onGoogleToken)
+  const handleGoogleLogin = Capacitor.isNativePlatform() ? googleLoginAndroid : () => googleLogin()
+
   return (
     <div style={{
       display: 'flex', gap: 8, padding: '10px 16px',
@@ -30,35 +30,12 @@ export function CalendarConnectBar({
       borderBottom: '1px solid var(--border)',
       alignItems: 'center',
     }}>
-      {/* Garmin */}
-      {!garminConnected ? (
-        <PillButton
-          icon={<Activity size={13} />}
-          label="Connect Garmin"
-          onClick={() => startGarminOAuth().catch(console.error)}
-          color="accent"
-        />
-      ) : (
-        <>
-          <PillTag icon={<Activity size={13} />} label="Garmin ✓" color="green" />
-          <PillButton
-            icon={<RefreshCw size={13} style={{ animation: garminSyncing ? 'spin 1s linear infinite' : 'none' }} />}
-            label={garminSyncing ? 'Syncing…' : 'Sync'}
-            onClick={onSyncGarmin}
-            disabled={garminSyncing}
-            color="accent"
-          />
-        </>
-      )}
-
-      <div style={{ width: 1, height: 18, background: 'var(--edge)', flexShrink: 0 }} />
-
       {/* Google Calendar */}
       {!googleConnected ? (
         <PillButton
           icon={<Calendar size={13} />}
           label="Connect Google Cal"
-          onClick={() => googleLogin()}
+          onClick={handleGoogleLogin}
           color="accent"
         />
       ) : (

@@ -1,7 +1,5 @@
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts'
 import { useHealthData, type HealthRow } from '@/hooks/useProgressData'
-import { useCalendarStore } from '@/store/useCalendarStore'
-import { startGarminOAuth } from '@/lib/garmin'
 
 function MiniChart({
   data, dataKey, color, unit, refValue,
@@ -60,7 +58,6 @@ function StatCard({
 
 export function HealthTab() {
   const { data: health = [] } = useHealthData(30)
-  const { garminConnected } = useCalendarStore()
 
   const chartData = health.map((d: HealthRow) => ({
     date: d.activity_date.slice(5),
@@ -79,34 +76,6 @@ export function HealthTab() {
     return vals.length ? Math.round(vals.reduce((s, v) => s + v, 0) / vals.length) : null
   }
 
-  if (!garminConnected) {
-    return (
-      <div style={{
-        background: 'var(--card)', border: '1px solid var(--edge)',
-        borderRadius: 'var(--radius)', padding: '32px 20px',
-        textAlign: 'center',
-      }}>
-        <div style={{ fontSize: 36, marginBottom: 12 }}>⌚</div>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', marginBottom: 8 }}>
-          Connect your Garmin
-        </div>
-        <div style={{ fontSize: 13, color: 'var(--text3)', marginBottom: 20, lineHeight: 1.6 }}>
-          RHR, HRV, stress, and active minutes are pulled automatically once your Garmin is connected.
-        </div>
-        <button
-          onClick={() => startGarminOAuth().catch(console.error)}
-          style={{
-            padding: '11px 20px', background: 'var(--accent)',
-            border: 'none', borderRadius: 'var(--radius-sm)',
-            color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer',
-          }}
-        >
-          Connect Garmin
-        </button>
-      </div>
-    )
-  }
-
   if (health.length === 0) {
     return (
       <div style={{
@@ -114,7 +83,7 @@ export function HealthTab() {
         borderRadius: 'var(--radius)', padding: '28px 16px',
         textAlign: 'center', color: 'var(--text3)', fontSize: 13,
       }}>
-        No Garmin data yet — tap Sync on the Calendar page to pull your data.
+        No health data yet — log your daily stats from the Home screen.
       </div>
     )
   }

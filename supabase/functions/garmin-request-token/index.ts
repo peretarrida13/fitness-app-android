@@ -1,6 +1,21 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const GARMIN_REQUEST_TOKEN_URL = 'https://connectapi.garmin.com/oauth-service/oauth/request_token'
+const MAX_BODY_BYTES = 512
+
+// Per-user rate limit: 5 requests per 15 min (per instance)
+const rateLimits = new Map<string, { count: number; resetAt: number }>()
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const entry = rateLimits.get(userId)
+  if (!entry || now > entry.resetAt) {
+    rateLimits.set(userId, { count: 1, resetAt: now + 15 * 60 * 1000 })
+    return true
+  }
+  if (entry.count >= 5) return false
+  entry.count++
+  return true
+}
 
 async function hmacSha1(key: string, data: string): Promise<string> {
   const cryptoKey = await crypto.subtle.importKey(
@@ -40,6 +55,12 @@ Deno.serve(async (req) => {
     const consumerSecret = Deno.env.get('GARMIN_CONSUMER_SECRET')!
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
 
+    // Reject oversized payloads
+    const contentLength = Number(req.headers.get('content-length') ?? 0)
+    if (contentLength > MAX_BODY_BYTES) {
+      return new Response(JSON.stringify({ error: 'Payload too large' }), { status: 413 })
+    }
+
     // Verify caller is authenticated
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
@@ -48,7 +69,17 @@ Deno.serve(async (req) => {
     const { data: { user }, error: authErr } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
 
-    const callbackUrl = `${supabaseUrl}/functions/v1/garmin-oauth-callback?state=${btoa(user.id)}`
+    if (!checkRateLimit(user.id)) {
+      return new Response(JSON.stringify({ error: 'Too many requests. Try again in 15 minutes.' }), {
+        status: 429,
+        headers: { 'Retry-After': '900' },
+      })
+    }
+
+    const reqBody = await req.json()
+    const platform = ['web', 'android'].includes(reqBody.platform) ? reqBody.platform : 'web'
+    const statePayload = btoa(JSON.stringify({ userId: user.id, platform }))
+    const callbackUrl = `${supabaseUrl}/functions/v1/garmin-oauth-callback?state=${statePayload}`
 
     const nonce = crypto.randomUUID().replace(/-/g, '')
     const timestamp = Math.floor(Date.now() / 1000).toString()

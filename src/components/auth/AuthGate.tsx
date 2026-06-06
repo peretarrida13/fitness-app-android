@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/useAuthStore'
 
 export function AuthGate({ children }: { children: ReactNode }) {
   const { user, loading, init, signInWithMagicLink } = useAuthStore()
-  const [email, setEmail] = useState('pere13.tarrida@gmail.com')
+  const [email, setEmail] = useState('')
   const [sent, setSent] = useState(false)
   const [sending, setSending] = useState(false)
   const [err, setErr] = useState<string | null>(null)

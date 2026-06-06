@@ -1,11 +1,14 @@
 import { useState } from 'react'
+import { Check } from 'lucide-react'
 import type { Meal } from '@/types/meals'
 
 interface Props {
   meal: Meal
+  isEaten?: boolean
+  onToggle?: () => void
 }
 
-export function MealCard({ meal }: Props) {
+export function MealCard({ meal, isEaten = false, onToggle }: Props) {
   const [open, setOpen] = useState(false)
 
   return (
@@ -21,17 +24,17 @@ export function MealCard({ meal }: Props) {
     >
       {/* Header */}
       <div
-        onClick={() => setOpen(!open)}
         style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           padding: '13px 14px',
-          cursor: 'pointer',
-          userSelect: 'none',
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+        <div
+          onClick={() => setOpen(!open)}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, flex: 1, cursor: 'pointer', userSelect: 'none' }}
+        >
           <div
             style={{
               width: 36, height: 36,
@@ -40,30 +43,52 @@ export function MealCard({ meal }: Props) {
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 17, flexShrink: 0,
               border: '1px solid var(--edge)',
+              opacity: isEaten ? 0.5 : 1,
             }}
           >
             {meal.icon}
           </div>
           <div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{meal.name}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: isEaten ? 'var(--text3)' : 'var(--text)', textDecoration: isEaten ? 'line-through' : 'none' }}>{meal.name}</div>
             <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 1 }}>{meal.time}</div>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div style={{ fontSize: 13, color: 'var(--accent2)', fontWeight: 600, flexShrink: 0 }}>
-            {meal.kcal} kcal
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {onToggle && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onToggle() }}
+              title={isEaten ? 'Mark as not eaten' : 'Mark as eaten'}
+              style={{
+                width: 28, height: 28, borderRadius: '50%', flexShrink: 0,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: isEaten ? 'var(--greenbg)' : 'transparent',
+                border: `1.5px solid ${isEaten ? 'var(--green)' : 'var(--edge)'}`,
+                cursor: 'pointer', transition: 'all 0.15s',
+                color: isEaten ? 'var(--green)' : 'var(--text3)',
+              }}
+            >
+              {isEaten ? <Check size={14} strokeWidth={2.5} /> : <span style={{ fontSize: 14 }}>+</span>}
+            </button>
+          )}
           <div
-            style={{
-              fontSize: 16,
-              color: 'var(--text3)',
-              transition: 'transform 0.22s',
-              transform: open ? 'rotate(180deg)' : 'none',
-              flexShrink: 0,
-              marginLeft: 8,
-            }}
+            onClick={() => setOpen(!open)}
+            style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}
           >
-            ⌄
+            <div style={{ fontSize: 13, color: 'var(--accent2)', fontWeight: 600, flexShrink: 0 }}>
+              {meal.kcal} kcal
+            </div>
+            <div
+              style={{
+                fontSize: 16,
+                color: 'var(--text3)',
+                transition: 'transform 0.22s',
+                transform: open ? 'rotate(180deg)' : 'none',
+                flexShrink: 0,
+                marginLeft: 4,
+              }}
+            >
+              ⌄
+            </div>
           </div>
         </div>
       </div>

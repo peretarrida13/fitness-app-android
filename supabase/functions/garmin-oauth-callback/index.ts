@@ -35,10 +35,26 @@ Deno.serve(async (req) => {
     return new Response('Missing params', { status: 400 })
   }
 
-  const userId = atob(state)
+  // Validate token/verifier to contain only safe OAuth characters
+  if (!/^[\w.-]+$/.test(oauthToken) || !/^[\w.-]+$/.test(oauthVerifier)) {
+    return new Response('Invalid params', { status: 400 })
+  }
+
+  let userId: string
+  let platform: string
+  try {
+    const decoded = JSON.parse(atob(state))
+    if (typeof decoded?.userId !== 'string' || !decoded.userId) throw new Error()
+    userId = decoded.userId
+    platform = decoded.platform === 'android' ? 'android' : 'web'
+  } catch {
+    return new Response('Invalid state', { status: 400 })
+  }
   const consumerKey = Deno.env.get('GARMIN_CONSUMER_KEY')!
   const consumerSecret = Deno.env.get('GARMIN_CONSUMER_SECRET')!
-  const appUrl = Deno.env.get('APP_URL')!
+  const appUrl = platform === 'android'
+    ? 'com.peretarrida.fittracker://oauth/garmin'
+    : Deno.env.get('APP_URL')!
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 

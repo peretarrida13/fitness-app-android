@@ -1,6 +1,6 @@
 import {
   BarChart, Bar, LineChart, Line,
-  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine,
+  XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
 import { useRunningData } from '@/hooks/useProgressData'
 import { getMondayOfWeek, toDateStr } from '@/lib/dateUtils'
@@ -154,7 +154,7 @@ export function RunningTab() {
             <YAxis tick={{ fill: '#44445a', fontSize: 9 }} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}`} />
             <Tooltip
               contentStyle={{ background: 'var(--card2)', border: '1px solid var(--edge)', borderRadius: 8, fontSize: 12 }}
-              formatter={(v: number) => [`${v} km`, 'Distance']}
+              formatter={(v) => [`${v} km`, 'Distance']}
             />
             <Bar dataKey="km" fill="rgba(86,201,154,0.75)" radius={[4, 4, 0, 0]} />
           </BarChart>

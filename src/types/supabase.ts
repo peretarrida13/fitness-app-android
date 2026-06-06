@@ -24,6 +24,17 @@ export interface DailyActivity {
   total_calories: number
   distance_meters: number
   synced_at: string
+  stress_avg: number | null
+  active_seconds: number | null
+  hrv_rmssd: number | null
+  body_battery_low: number | null
+  floors_climbed: number | null
+  sleep_hours: number | null
+  sleep_score: number | null
+  sleep_deep_minutes: number | null
+  sleep_light_minutes: number | null
+  sleep_rem_minutes: number | null
+  sleep_awake_minutes: number | null
 }
 
 export interface OAuthToken {
@@ -72,7 +83,7 @@ export interface PersonalRecord {
 export interface Activity {
   id: string
   user_id: string
-  garmin_activity_id: string
+  garmin_activity_id: string | null
   activity_date: string
   activity_type: string
   name: string | null
@@ -84,6 +95,7 @@ export interface Activity {
   elevation_gain_m: number | null
   avg_cadence: number | null
   synced_at: string
+  is_manual: boolean
 }
 
 export interface GoogleCalendarEvent {
@@ -91,4 +103,36 @@ export interface GoogleCalendarEvent {
   summary: string
   start: { dateTime?: string; date?: string }
   end: { dateTime?: string; date?: string }
+}
+
+// ── Habit Tracker ────────────────────────────────────────────────────────────
+
+export type HabitColor = '--accent' | '--green' | '--gold' | '--red' | '--text2'
+
+export interface Habit {
+  id: string
+  user_id: string
+  name: string
+  icon: string
+  color: HabitColor
+  sort_order: number
+  created_at: string
+}
+
+export interface HabitLog {
+  id: string
+  user_id: string
+  habit_id: string
+  logged_date: string
+  created_at: string
+}
+
+// ── Todo List ─────────────────────────────────────────────────────────────────
+
+export interface Todo {
+  id: string
+  user_id: string
+  title: string
+  completed: boolean
+  created_at: string
 }

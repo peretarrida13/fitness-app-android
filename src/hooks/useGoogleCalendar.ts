@@ -2,6 +2,30 @@ import { useQuery } from '@tanstack/react-query'
 import { getWeekDays, toDateStr } from '@/lib/dateUtils'
 import type { GoogleCalendarEvent } from '@/types/supabase'
 
+export async function createCalendarEvent(
+  accessToken: string,
+  event: { summary: string; description?: string; startISO: string; endISO: string }
+): Promise<void> {
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const res = await fetch(
+    'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        summary: event.summary,
+        description: event.description,
+        start: { dateTime: event.startISO, timeZone: tz },
+        end: { dateTime: event.endISO, timeZone: tz },
+      }),
+    }
+  )
+  if (!res.ok) throw new Error(`Failed to create calendar event: ${res.status}`)
+}
+
 export function useGoogleCalendarEvents(weekStart: Date, accessToken: string | null) {
   const days = getWeekDays(weekStart)
   const timeMin = new Date(days[0])
@@ -10,7 +34,7 @@ export function useGoogleCalendarEvents(weekStart: Date, accessToken: string | n
   timeMax.setHours(23, 59, 59, 999)
 
   return useQuery({
-    queryKey: ['google_calendar', toDateStr(weekStart)],
+    queryKey: ['google_calendar', toDateStr(weekStart), accessToken ?? ''],
     enabled: !!accessToken,
     queryFn: async () => {
       const params = new URLSearchParams({

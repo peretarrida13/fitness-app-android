@@ -58,6 +58,22 @@ async function garminGet(
   })
 }
 
+const MAX_BODY_BYTES = 512
+
+// Per-user rate limit: 5 requests per 15 min (per instance)
+const rateLimits = new Map<string, { count: number; resetAt: number }>()
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now()
+  const entry = rateLimits.get(userId)
+  if (!entry || now > entry.resetAt) {
+    rateLimits.set(userId, { count: 1, resetAt: now + 15 * 60 * 1000 })
+    return true
+  }
+  if (entry.count >= 5) return false
+  entry.count++
+  return true
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
@@ -69,6 +85,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Reject oversized payloads
+    const contentLength = Number(req.headers.get('content-length') ?? 0)
+    if (contentLength > MAX_BODY_BYTES) {
+      return new Response(JSON.stringify({ error: 'Payload too large' }), { status: 413 })
+    }
+
     const authHeader = req.headers.get('Authorization')
     if (!authHeader) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
 
@@ -81,6 +103,13 @@ Deno.serve(async (req) => {
     const anonClient = createClient(supabaseUrl, Deno.env.get('SUPABASE_ANON_KEY')!)
     const { data: { user }, error: authErr } = await anonClient.auth.getUser(authHeader.replace('Bearer ', ''))
     if (authErr || !user) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 })
+
+    if (!checkRateLimit(user.id)) {
+      return new Response(JSON.stringify({ error: 'Too many requests. Try again in 15 minutes.' }), {
+        status: 429,
+        headers: { 'Retry-After': '900' },
+      })
+    }
 
     // Get Garmin tokens
     const adminClient = createClient(supabaseUrl, serviceRoleKey)
@@ -95,11 +124,26 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ error: 'Garmin not connected' }), { status: 400 })
     }
 
-    const { startDate, days = 7 } = await req.json()
+    const body = await req.json()
+    const { startDate } = body
+    const days = body.days ?? 7
+
+    // Validate inputs
+    if (typeof startDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+      return new Response(JSON.stringify({ error: 'Invalid startDate: expected YYYY-MM-DD' }), { status: 400 })
+    }
+    const daysNum = Number(days)
+    if (!Number.isInteger(daysNum) || daysNum < 1 || daysNum > 30) {
+      return new Response(JSON.stringify({ error: 'Invalid days: must be 1–30' }), { status: 400 })
+    }
+
     const start = new Date(startDate)
+    if (isNaN(start.getTime())) {
+      return new Response(JSON.stringify({ error: 'Invalid startDate' }), { status: 400 })
+    }
     start.setHours(0, 0, 0, 0)
     const end = new Date(start)
-    end.setDate(end.getDate() + days)
+    end.setDate(end.getDate() + daysNum)
 
     const uploadStart = Math.floor(start.getTime() / 1000)
     const uploadEnd = Math.floor(end.getTime() / 1000)

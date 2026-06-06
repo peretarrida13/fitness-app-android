@@ -49,7 +49,7 @@ export function BodyTab() {
     const parsed: Record<string, number | undefined> = {}
     for (const f of FIELDS) {
       const v = parseFloat(form[f.key as keyof typeof form])
-      if (!isNaN(v) && v > 0) parsed[f.key] = v
+      if (!isNaN(v) && v > 0 && v <= 300) parsed[f.key] = v
     }
     if (Object.keys(parsed).length === 0) return
     await logMeasurement.mutateAsync(parsed)

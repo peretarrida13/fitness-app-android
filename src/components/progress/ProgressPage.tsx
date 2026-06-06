@@ -29,7 +29,7 @@ export function ProgressPage() {
         position: 'sticky', top: 0, zIndex: 10,
         background: 'rgba(10,10,15,0.92)', backdropFilter: 'blur(12px)',
         borderBottom: '1px solid var(--border)',
-        padding: '14px 16px 0',
+        padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 0',
       }}>
         <h1 style={{
           fontFamily: "'Space Grotesk', system-ui, sans-serif",

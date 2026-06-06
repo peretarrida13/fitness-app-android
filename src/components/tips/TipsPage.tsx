@@ -114,9 +114,9 @@ const TIPS: TipSection[] = [
 
 export function TipsPage() {
   return (
-    <div style={{ padding: '14px 16px' }}>
+    <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px' }}>
       {/* Header */}
-      <div style={{ padding: '20px 0 14px', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
+      <div style={{ padding: '12px 0 14px', borderBottom: '1px solid var(--border)', marginBottom: 16 }}>
         <h1 style={{ fontFamily: "'Space Grotesk', system-ui, sans-serif", fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>
           Tips & Strategy
         </h1>

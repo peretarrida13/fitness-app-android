@@ -1,7 +1,18 @@
 import { useState, type ReactNode } from 'react'
+import { supabase } from '@/lib/supabase'
 
 const SESSION_KEY = 'app_unlocked'
-const CORRECT = import.meta.env.VITE_APP_PASSWORD
+
+// Client-side rate limit: 5 attempts per 15 min (server enforces its own limit too)
+const recentAttempts: number[] = []
+function clientRateLimit(): boolean {
+  const now = Date.now()
+  const cutoff = now - 15 * 60 * 1000
+  while (recentAttempts.length && recentAttempts[0] < cutoff) recentAttempts.shift()
+  if (recentAttempts.length >= 5) return false
+  recentAttempts.push(now)
+  return true
+}
 
 function isUnlocked() {
   return sessionStorage.getItem(SESSION_KEY) === '1'
@@ -12,17 +23,37 @@ export function PasswordGate({ children }: { children: ReactNode }) {
   const [input, setInput] = useState('')
   const [shake, setShake] = useState(false)
   const [showPw, setShowPw] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [errMsg, setErrMsg] = useState<string | null>(null)
 
   if (unlocked) return <>{children}</>
 
-  function attempt() {
-    if (input === CORRECT) {
-      sessionStorage.setItem(SESSION_KEY, '1')
-      setUnlocked(true)
-    } else {
-      setShake(true)
+  async function attempt() {
+    if (!input || verifying) return
+    if (!clientRateLimit()) {
+      setErrMsg('Too many attempts. Try again in 15 minutes.')
       setInput('')
-      setTimeout(() => setShake(false), 600)
+      return
+    }
+    setVerifying(true)
+    setErrMsg(null)
+    try {
+      const { error } = await supabase.functions.invoke('verify-gate-password', {
+        body: { password: input },
+      })
+      if (error) {
+        setShake(true)
+        setInput('')
+        setErrMsg(error.message?.includes('429') ? 'Too many attempts. Try again later.' : 'Incorrect password')
+        setTimeout(() => setShake(false), 600)
+      } else {
+        sessionStorage.setItem(SESSION_KEY, '1')
+        setUnlocked(true)
+      }
+    } catch {
+      setErrMsg('Network error. Check your connection.')
+    } finally {
+      setVerifying(false)
     }
   }
 
@@ -111,19 +142,24 @@ export function PasswordGate({ children }: { children: ReactNode }) {
               </button>
             </div>
 
+            {errMsg && (
+              <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>{errMsg}</div>
+            )}
+
             <button
               onClick={attempt}
+              disabled={verifying || !input}
               style={{
                 width: '100%', marginTop: 12, padding: '12px',
                 background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
                 border: 'none', borderRadius: 'var(--radius-sm)',
                 color: '#fff', fontSize: 14, fontWeight: 700,
-                cursor: 'pointer', letterSpacing: '0.02em',
+                cursor: verifying ? 'default' : 'pointer', letterSpacing: '0.02em',
                 boxShadow: '0 4px 16px rgba(91,141,238,0.35)',
-                transition: 'opacity 0.15s',
+                transition: 'opacity 0.15s', opacity: verifying ? 0.7 : 1,
               }}
             >
-              Unlock
+              {verifying ? 'Checking…' : 'Unlock'}
             </button>
           </div>
         </div>
