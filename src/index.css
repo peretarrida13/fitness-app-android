@@ -19,6 +19,10 @@
   --redbd:    rgba(238,107,107,0.22);
   --green:    #56c99a;
   --greenbg:  rgba(86,201,154,0.08);
+  --stretch:   #a78bfa;
+  --stretch2:  #c4b5fd;
+  --stretchbg: rgba(167,139,250,0.10);
+  --stretchbd: rgba(167,139,250,0.25);
   --text:     #f0f0fa;
   --text2:    #8888aa;
   --text3:    #44445a;

@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { useUIStore } from '@/store/useUIStore'
 import { GYM_DAYS } from '@/data/defaultGym'
 import { ExerciseCard } from './ExerciseCard'
+import { StretchView } from './StretchView'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useLogWorkout, useDeleteWorkoutLog, useWorkoutLogs } from '@/hooks/useCalendarData'
 import { usePersonalRecords, useAddPR } from '@/hooks/useProgressData'
@@ -18,6 +20,7 @@ const DAY_LABELS = [
 ]
 
 export function GymPage() {
+  const [gymView, setGymView] = useState<'workout' | 'stretch'>('workout')
   const { activeGymDay, setActiveGymDay } = useUIStore()
   const day = GYM_DAYS[activeGymDay]
   const { user } = useAuthStore()
@@ -54,6 +57,39 @@ export function GymPage() {
         </p>
       </div>
 
+      {/* View toggle */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {(['workout', 'stretch'] as const).map((view) => {
+          const isActive = gymView === view
+          const isStretch = view === 'stretch'
+          const activeColor = isStretch ? 'var(--stretch)' : 'var(--accent)'
+          const activeBg = isStretch ? 'var(--stretchbg)' : 'var(--accentbg)'
+          const activeBd = isStretch ? 'var(--stretchbd)' : 'var(--accentbd)'
+          return (
+            <button
+              key={view}
+              onClick={() => setGymView(view)}
+              style={{
+                padding: '7px 16px', borderRadius: 20,
+                fontSize: 13, fontWeight: 600,
+                color: isActive ? activeColor : 'var(--text3)',
+                background: isActive ? activeBg : 'transparent',
+                border: `1px solid ${isActive ? activeBd : 'var(--edge)'}`,
+                cursor: 'pointer', transition: 'all 0.18s',
+              }}
+            >
+              {view === 'workout' ? '🏋️ Workouts' : '🧘 Stretch'}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* Stretch view */}
+      {gymView === 'stretch' && <StretchView />}
+
+      {/* Workout view */}
+      {gymView === 'workout' && (
+        <>
       {/* Day tabs */}
       <div
         style={{
@@ -233,6 +269,8 @@ export function GymPage() {
               ))}
             </div>
           ))}
+        </>
+      )}
         </>
       )}
     </div>
