@@ -1,4 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+
+export class GoogleAuthExpiredError extends Error {}
 import { getWeekDays, toDateStr } from '@/lib/dateUtils'
 import type { GoogleCalendarEvent } from '@/types/supabase'
 
@@ -48,6 +50,7 @@ export function useGoogleCalendarEvents(weekStart: Date, accessToken: string | n
         `https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,
         { headers: { Authorization: `Bearer ${accessToken}` } }
       )
+      if (res.status === 401 || res.status === 403) throw new GoogleAuthExpiredError('Google Calendar token expired')
       if (!res.ok) throw new Error('Google Calendar fetch failed')
       const json = await res.json()
       const events: GoogleCalendarEvent[] = json.items ?? []

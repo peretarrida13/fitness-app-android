@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { useCalendarStore } from '@/store/useCalendarStore'
 import { useAuthStore } from '@/store/useAuthStore'
 import { useNavigate } from 'react-router-dom'
@@ -6,7 +7,7 @@ import {
   useDailyActivity, useActivities,
 } from '@/hooks/useCalendarData'
 import { useHabits, useHabitLogsForWeek } from '@/hooks/useHabitData'
-import { useGoogleCalendarEvents } from '@/hooks/useGoogleCalendar'
+import { useGoogleCalendarEvents, GoogleAuthExpiredError } from '@/hooks/useGoogleCalendar'
 import { GYM_DAYS } from '@/data/defaultGym'
 import { DAYS } from '@/data/defaultMeals'
 import { getWeekDays, toDateStr, getDayOfWeekIndex, isToday } from '@/lib/dateUtils'
@@ -29,7 +30,11 @@ export function CalendarPage() {
   const { data: workoutLogs } = useWorkoutLogs(weekStart)
   const { data: activityMap } = useDailyActivity(weekStart)
   const { data: activitiesMap } = useActivities(weekStart)
-  const { data: googleEvents } = useGoogleCalendarEvents(weekStart, googleAccessToken)
+  const { data: googleEvents, error: calendarError } = useGoogleCalendarEvents(weekStart, googleAccessToken)
+
+  useEffect(() => {
+    if (calendarError instanceof GoogleAuthExpiredError) setGoogleToken(null)
+  }, [calendarError, setGoogleToken])
   const { data: habits = [] } = useHabits()
   const { data: habitLogsMap } = useHabitLogsForWeek(weekStart)
   const logWorkout = useLogWorkout()
@@ -51,6 +56,12 @@ export function CalendarPage() {
           onGoogleToken={(token) => setGoogleToken(token)}
           onGoogleDisconnect={() => setGoogleToken(null)}
         />
+      )}
+
+      {calendarError instanceof GoogleAuthExpiredError && (
+        <div style={{ padding: '8px 16px', fontSize: 12, color: 'var(--red)' }}>
+          Google Calendar session expired — please reconnect.
+        </div>
       )}
 
       <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
