@@ -81,6 +81,7 @@ class WhoopBleBuffers {
 
     suspend fun computeAndUpload(): Boolean = withContext(Dispatchers.IO) {
         val snapshot = buildSnapshot()
+        WhoopPlugin.emitSnapshot(snapshot)
         uploadSnapshot(snapshot)
     }
 

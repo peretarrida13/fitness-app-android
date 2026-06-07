@@ -1,7 +1,6 @@
-import { useState } from 'react'
 import { Check } from 'lucide-react'
 import { useAuthStore } from '@/store/useAuthStore'
-import { useWorkoutLogs, useLogWorkout, useDeleteWorkoutLog, useWorkoutStreak, useTodayDailyActivity } from '@/hooks/useCalendarData'
+import { useWorkoutLogs, useLogWorkout, useDeleteWorkoutLog, useWorkoutStreak } from '@/hooks/useCalendarData'
 import { useHabits, useHabitLogsForWeek, useToggleHabitLog } from '@/hooks/useHabitData'
 import { useWeightLogs } from '@/hooks/useProgressData'
 import { useMealLogsForDay } from '@/hooks/useMealLogs'
@@ -10,9 +9,7 @@ import { GYM_DAYS } from '@/data/defaultGym'
 import { DAYS } from '@/data/defaultMeals'
 import { useSettingsStore } from '@/store/useSettingsStore'
 import { useWaterStore } from '@/store/useWaterStore'
-import { RecoveryCard } from '@/components/home/RecoveryCard'
 import { WhoopDashboard } from '@/components/whoop/WhoopDashboard'
-import { DailyInputModal } from '@/components/home/DailyInputModal'
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June',
@@ -22,7 +19,6 @@ export function HomePage() {
   const { user } = useAuthStore()
   const { weightGoalKg, calorieTarget, proteinTarget, waterGoalMl } = useSettingsStore()
   const waterStore = useWaterStore()
-  const [showDailyModal, setShowDailyModal] = useState(false)
 
   const today = new Date()
   const todayStr = toDateStr(today)
@@ -36,7 +32,6 @@ export function HomePage() {
   const { data: habitLogsMap } = useHabitLogsForWeek(weekStart)
   const { data: weightLogs = [] } = useWeightLogs(7)
   const { data: eatenSet } = useMealLogsForDay(todayStr)
-  const { data: todayActivity = null } = useTodayDailyActivity()
   const streak = useWorkoutStreak()
 
   const logWorkout = useLogWorkout()
@@ -80,7 +75,6 @@ export function HomePage() {
 
   return (
     <div style={{ padding: '0 16px 96px' }}>
-      <WhoopDashboard />
       {/* Header */}
       <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 0 16px' }}>
         <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 4 }}>{dateLabel}</div>
@@ -309,10 +303,8 @@ export function HomePage() {
         </div>
       )}
 
-      {/* Recovery card */}
-      <RecoveryCard activity={todayActivity} onLogClick={() => setShowDailyModal(true)} />
-
-      <DailyInputModal open={showDailyModal} onClose={() => setShowDailyModal(false)} />
+      {/* Whoop dashboard */}
+      <WhoopDashboard />
     </div>
   )
 }

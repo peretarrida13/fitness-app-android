@@ -11,6 +11,7 @@ import { ProgressPage } from './components/progress/ProgressPage'
 import { CalendarPage } from './components/calendar/CalendarPage'
 import { CalendarDayPage } from './components/calendar/CalendarDayPage'
 import { HabitsPage } from './components/habits/HabitsPage'
+import { WhoopPage } from './components/whoop/WhoopPage'
 import { AuthGate } from './components/auth/AuthGate'
 import { PasswordGate } from './components/auth/PasswordGate'
 
@@ -35,6 +36,7 @@ export default function App() {
                 <Route path="/calendar" element={<CalendarPage />} />
                 <Route path="/calendar/:date" element={<CalendarDayPage />} />
                 <Route path="/habits" element={<HabitsPage />} />
+                <Route path="/whoop" element={<WhoopPage />} />
               </Route>
             </Routes>
             </AuthGate>

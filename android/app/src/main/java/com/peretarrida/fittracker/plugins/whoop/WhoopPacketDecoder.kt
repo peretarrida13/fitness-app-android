@@ -29,36 +29,21 @@ object WhoopPacketDecoder {
      * Validate a raw BLE notification frame.
      * Returns the body bytes (without frame header/footer) or null on CRC failure.
      */
+    // Frame format (Whoop 5 / Maverick, confirmed from goose/Rust/core/src/protocol.rs):
+    //   DeviceType::Maverick  expected_frame_len = u16(buffer[2], buffer[3]) + 8
+    //   [SOF=AA][0x01][declaredLen_lo][declaredLen_hi][0x00][0x01][CRC16_lo][CRC16_hi]
+    //   [payload (declaredLen−4 bytes)][CRC32 4 bytes LE]
+    // declaredLen = payloadLen + 4 (includes trailing CRC32).
+    // Payload starts at raw[8].
     fun validateFrame(raw: ByteArray): ByteArray? {
         return try {
-            if (raw.size < WhoopGattProfile.FRAME_HEADER_SIZE + WhoopGattProfile.FRAME_FOOTER_SIZE) {
-                return null
-            }
+            if (raw.size < 12) return null           // 8-byte header + 4-byte CRC minimum
             if (raw[0] != WhoopGattProfile.SOF) return null
-
-            val lenBytes = raw.sliceArray(1..2)
-            val expectedHeaderCrc = WhoopGattProfile.crc8(lenBytes)
-            if (raw[3] != expectedHeaderCrc) {
-                Log.w(TAG, "CRC-8 header mismatch")
-                return null
-            }
-
-            val bodyLen = ((raw[2].toInt() and 0xFF) shl 8) or (raw[1].toInt() and 0xFF)
-            val body = raw.sliceArray(
-                WhoopGattProfile.FRAME_HEADER_SIZE until
-                WhoopGattProfile.FRAME_HEADER_SIZE + bodyLen - WhoopGattProfile.FRAME_FOOTER_SIZE
-            )
-            val crc32Offset = WhoopGattProfile.FRAME_HEADER_SIZE + body.size
-            val actualCrc = (raw[crc32Offset].toInt() and 0xFF) or
-                ((raw[crc32Offset + 1].toInt() and 0xFF) shl 8) or
-                ((raw[crc32Offset + 2].toInt() and 0xFF) shl 16) or
-                ((raw[crc32Offset + 3].toInt() and 0xFF) shl 24)
-            val expectedCrc = WhoopGattProfile.crc32(body)
-            if (actualCrc != expectedCrc) {
-                Log.w(TAG, "CRC-32 body mismatch")
-                return null
-            }
-            body
+            val declaredLen = (raw[2].toInt() and 0xFF) or ((raw[3].toInt() and 0xFF) shl 8)
+            if (declaredLen < 4) return null         // must hold at least 4-byte CRC32
+            if (raw.size < 8 + declaredLen) return null
+            val payloadLen = declaredLen - 4         // CRC32 occupies last 4 of declared block
+            raw.sliceArray(8 until 8 + payloadLen)
         } catch (e: Exception) {
             Log.e(TAG, "validateFrame: ${e.message}")
             null
@@ -95,28 +80,50 @@ object WhoopPacketDecoder {
     // ── Real-time data (type 0x28) ────────────────────────────────────────────
 
     /**
-     * Decode a REALTIME_DATA packet (HR + RR, no timestamp).
-     * Layout inferred from whoof PROTOCOL.md and whoomp.js.
-     * Body payload: [hr_bpm u8][rrnum u8][rr u16le × rrnum]
+     * Decode a REALTIME_DATA packet (HR + RR).
+     *
+     * Goose Rust core (protocol.rs) defines this packet structure:
+     *   body[0]   = 0x28 (packet type)
+     *   body[1]   = packet_k (domain: 10 = raw motion stream)
+     *   body[2]   = status/stream flag
+     *   body[3-6] = counter (u32 LE)
+     *   body[7-10]= timestamp_sec (u32 LE)
+     *   body[11-12]= timestamp_subsec (u16 LE)
+     *   body[13+] = domain-specific data
+     *
+     * For packet_k=10 (raw motion / "whoop.ble.raw_motion_k10"):
+     *   body[13-16] = domain header (4 bytes)
+     *   body[17]    = heart_rate_bpm (u8)
+     *   body[18-19] = first RR interval (u16 LE, 1/1024 s units)
+     *
+     * Previous bug: was slicing from body[3], reading the counter as HR → always null.
      */
     fun decodeRealtime(body: ByteArray): BiometricReading? {
         return try {
-            if (body.size < 3 + MIN_RT_BODY) return null
-            val payload = body.sliceArray(3 until body.size)
-            if (payload.isEmpty()) return null
-            val hr = payload[0].toInt() and 0xFF
-            if (hr !in 20..250) return null
-            val rrCount = if (payload.size > 1) (payload[1].toInt() and 0xFF).coerceIn(0, 4) else 0
-            var firstRr = 0f
-            if (rrCount > 0 && payload.size >= 4) {
-                firstRr = readU16LE(payload, 2).toFloat()
-                if (firstRr !in 200f..2000f) firstRr = 0f
+            if (body.size < 13) return null
+            val packetK = body[1].toInt() and 0xFF
+            when (packetK) {
+                10 -> {
+                    // Raw motion stream — HR at byte 17
+                    if (body.size < 18) return null
+                    val hr = body[17].toInt() and 0xFF
+                    if (hr !in 20..250) return null
+                    val rrMs = if (body.size >= 20) {
+                        val raw = readU16LE(body, 18)
+                        val ms = raw * 1000f / 1024f
+                        if (ms in 200f..2000f) ms else 0f
+                    } else 0f
+                    BiometricReading(
+                        heartRate = hr, rrIntervalMs = rrMs, spO2 = 0f, skinTempCelsius = 0f,
+                        accelX = 0f, accelY = 0f, accelZ = 0f,
+                        timestamp = System.currentTimeMillis(),
+                    )
+                }
+                else -> {
+                    Log.d(TAG, "decodeRealtime: K=$packetK size=${body.size} body[13..20]=${body.drop(13).take(8).joinToString(""){"%02x".format(it)}}")
+                    null
+                }
             }
-            BiometricReading(
-                heartRate = hr, rrIntervalMs = firstRr, spO2 = 0f, skinTempCelsius = 0f,
-                accelX = 0f, accelY = 0f, accelZ = 0f,
-                timestamp = System.currentTimeMillis(),
-            )
         } catch (e: Exception) {
             Log.e(TAG, "decodeRealtime: ${e.message}")
             null
@@ -188,7 +195,7 @@ object WhoopPacketDecoder {
     private fun readU32LE(b: ByteArray, off: Int): Long = (b[off].toLong() and 0xFF) or
         ((b[off+1].toLong() and 0xFF) shl 8) or ((b[off+2].toLong() and 0xFF) shl 16) or
         ((b[off+3].toLong() and 0xFF) shl 24)
-    private fun readU16LE(b: ByteArray, off: Int): Int =
+    fun readU16LE(b: ByteArray, off: Int): Int =
         (b[off].toInt() and 0xFF) or ((b[off+1].toInt() and 0xFF) shl 8)
     private fun readS16LE(b: ByteArray, off: Int): Short =
         ((b[off+1].toInt() shl 8) or (b[off].toInt() and 0xFF)).toShort()

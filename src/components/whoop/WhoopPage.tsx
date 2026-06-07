@@ -1,0 +1,178 @@
+import { useNavigate } from 'react-router-dom'
+import { useWhoopBackend } from '../../hooks/useWhoopBackend'
+
+const ZONE_META = [
+  { label: 'Zone 1', desc: '50–60%', color: '#60a5fa' },
+  { label: 'Zone 2', desc: '60–70%', color: '#34d399' },
+  { label: 'Zone 3', desc: '70–80%', color: '#fbbf24' },
+  { label: 'Zone 4', desc: '80–90%', color: '#f97316' },
+  { label: 'Zone 5', desc: '90–100%', color: '#ef4444' },
+]
+
+function Ring({ pct, color, label, value }: { pct: number; color: string; label: string; value: string }) {
+  const size = 110, sw = 10, r = (size - sw) / 2
+  const circ = 2 * Math.PI * r
+  const offset = circ * (1 - Math.max(0, Math.min(1, pct)))
+  return (
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#1a1a26" strokeWidth={sw} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={sw}
+        strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+        style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+      <g transform={`rotate(90, ${size/2}, ${size/2})`}>
+        <text x={size/2} y={size/2 - 5} textAnchor="middle" dominantBaseline="middle"
+          style={{ fill: color, fontSize: 20, fontWeight: 700, fontFamily: "'Space Grotesk', sans-serif" }}>{value}</text>
+        <text x={size/2} y={size/2 + 13} textAnchor="middle" dominantBaseline="middle"
+          style={{ fill: '#555', fontSize: 8.5, letterSpacing: '0.06em' }}>{label}</text>
+      </g>
+    </svg>
+  )
+}
+
+function Row({ label, value, unit, color }: { label: string; value: string | number | null | undefined; unit?: string; color?: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #1a1a26' }}>
+      <span style={{ fontSize: 13, color: '#888' }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 600, color: color ?? '#e2e8f0', fontFamily: "'Space Grotesk', sans-serif" }}>
+        {value !== null && value !== undefined ? `${value}${unit ? ' ' + unit : ''}` : '—'}
+      </span>
+    </div>
+  )
+}
+
+function Card({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ background: '#0a0a0f', border: '1px solid #1a1a26', borderRadius: 14, padding: '14px 16px', marginBottom: 10 }}>
+      {children}
+    </div>
+  )
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return <div style={{ fontSize: 10, fontWeight: 600, color: '#555', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>{children}</div>
+}
+
+const rc = (s: number | null) => !s ? '#444' : s >= 67 ? '#22c55e' : s >= 34 ? '#eab308' : '#ef4444'
+const sc = (v: number | null) => !v ? '#444' : v > 14 ? '#ef4444' : v >= 10 ? '#f97316' : '#3b82f6'
+
+export function WhoopPage() {
+  const navigate = useNavigate()
+  const { data, loading } = useWhoopBackend()
+
+  const r = data?.recovery
+  const s = data?.strain
+  const hrv = typeof r?.hrv === 'object' && r?.hrv !== null ? r.hrv : null
+  const rmssd = typeof r?.hrv === 'number' ? r.hrv : (hrv as any)?.rmssd ?? null
+  const battery = data?.battery
+  const sleep = data?.sleep
+
+  const recoveryScore = r?.score ?? null
+  const strainScore = s?.score ?? null
+  const recoveryColor = rc(recoveryScore)
+  const strainColor = sc(strainScore)
+
+  return (
+    <div style={{ background: '#000', minHeight: '100vh' }}>
+      {/* Header */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid #1a1a26', padding: '14px 16px 12px',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#5b8dee', fontSize: 14, cursor: 'pointer', padding: 0 }}>←</button>
+        <h1 style={{ fontFamily: "'Space Grotesk', sans-serif", fontSize: 22, fontWeight: 700, color: '#e2e8f0', margin: 0, flex: 1 }}>Whoop</h1>
+        {loading && <span style={{ fontSize: 11, color: '#555' }}>Syncing…</span>}
+        {!data && !loading && <span style={{ fontSize: 11, color: '#555' }}>Offline</span>}
+        {data?.stale && <span style={{ fontSize: 11, color: '#f59e0b' }}>Stale</span>}
+      </div>
+
+      <div style={{ padding: '12px 16px 96px' }}>
+
+        {/* Recovery + Strain rings */}
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', padding: '8px 0' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <Ring pct={recoveryScore !== null ? recoveryScore / 100 : 0} color={recoveryColor}
+                label="RECOVERY" value={recoveryScore !== null ? String(recoveryScore) : '—'} />
+              {r?.level && <span style={{ fontSize: 12, fontWeight: 600, color: recoveryColor }}>{r.level}</span>}
+            </div>
+            <div style={{ width: 1, height: 90, background: '#1a1a26' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+              <Ring pct={strainScore !== null ? strainScore / 21 : 0} color={strainColor}
+                label="STRAIN" value={strainScore !== null ? strainScore.toFixed(1) : '—'} />
+              {s?.level && <span style={{ fontSize: 12, fontWeight: 600, color: strainColor, textTransform: 'capitalize' }}>{s.level}</span>}
+            </div>
+          </div>
+        </Card>
+
+        {/* HR Zones + current HR */}
+        <Card>
+          <div style={{ display: 'flex', gap: 16, marginBottom: 14 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Heart Rate</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 30, fontWeight: 700, color: '#ef4444', fontFamily: "'Space Grotesk', sans-serif" }}>{data?.heart_rate ?? '—'}</span>
+                <span style={{ fontSize: 12, color: '#555' }}>bpm</span>
+              </div>
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: '#555', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Strain</div>
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
+                <span style={{ fontSize: 30, fontWeight: 700, color: strainColor, fontFamily: "'Space Grotesk', sans-serif" }}>{strainScore !== null ? strainScore.toFixed(1) : '—'}</span>
+                <span style={{ fontSize: 12, color: '#555' }}>/21</span>
+              </div>
+            </div>
+          </div>
+          {/* Zone ribbon */}
+          <div style={{ display: 'flex', height: 6, borderRadius: 3, overflow: 'hidden', gap: 1, marginBottom: 10 }}>
+            {ZONE_META.map(({ color }) => (
+              <div key={color} style={{ flex: 1, background: color }} />
+            ))}
+          </div>
+          <SectionLabel>HR Zones (HRR)</SectionLabel>
+          {ZONE_META.map(({ label, desc, color }) => (
+            <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid #1a1a26' }}>
+              <div style={{ width: 10, height: 10, borderRadius: 2, background: color, flexShrink: 0 }} />
+              <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: '#e2e8f0' }}>{label} <span style={{ color: '#555', fontWeight: 400 }}>{desc}</span></span>
+            </div>
+          ))}
+        </Card>
+
+        {/* HRV */}
+        <Card>
+          <SectionLabel>HRV</SectionLabel>
+          <Row label="rMSSD" value={rmssd !== null ? Math.round(rmssd) : null} unit="ms" color="#9b8dee" />
+          {hrv && typeof hrv === 'object' && (
+            <>
+              <Row label="SDNN" value={(hrv as any).sdnn !== null ? Math.round((hrv as any).sdnn) : null} unit="ms" />
+              <Row label="pNN50" value={(hrv as any).pnn50} unit="%" />
+            </>
+          )}
+        </Card>
+
+        {/* Sleep */}
+        {sleep && Object.keys(sleep).length > 0 && (
+          <Card>
+            <SectionLabel>Sleep</SectionLabel>
+            {sleep.deep !== undefined && <Row label="Deep" value={sleep.deep} unit="min" color="#3b82f6" />}
+            {sleep.rem !== undefined && <Row label="REM" value={sleep.rem} unit="min" color="#9b8dee" />}
+            {sleep.light !== undefined && <Row label="Light" value={sleep.light} unit="min" />}
+            {sleep.awake !== undefined && <Row label="Awake" value={sleep.awake} unit="min" color="#555" />}
+          </Card>
+        )}
+
+        {/* Battery */}
+        {battery && (
+          <Card>
+            <SectionLabel>Device</SectionLabel>
+            <Row label="Battery" value={battery.percent} unit="%" />
+            {battery.charging && <Row label="Status" value="Charging ⚡" />}
+            <Row label="Est. days remaining" value={battery.estimated_days_remaining} unit="d" />
+          </Card>
+        )}
+
+      </div>
+    </div>
+  )
+}
