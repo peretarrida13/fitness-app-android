@@ -104,17 +104,15 @@ object WhoopPacketDecoder {
             val packetK = body[1].toInt() and 0xFF
             when (packetK) {
                 10 -> {
-                    // Raw motion stream — HR at byte 17
+                    // Raw motion stream — HR at byte 17.
+                    // Bytes 18-19 are NOT RR intervals (they follow an N×256+1 pattern
+                    // that is part of the motion domain payload, not inter-beat timing).
+                    // Use decodeStandardHrs() on the 0x2A37 characteristic for real RR data.
                     if (body.size < 18) return null
                     val hr = body[17].toInt() and 0xFF
                     if (hr !in 20..250) return null
-                    val rrMs = if (body.size >= 20) {
-                        val raw = readU16LE(body, 18)
-                        val ms = raw * 1000f / 1024f
-                        if (ms in 200f..2000f) ms else 0f
-                    } else 0f
                     BiometricReading(
-                        heartRate = hr, rrIntervalMs = rrMs, spO2 = 0f, skinTempCelsius = 0f,
+                        heartRate = hr, rrIntervalMs = 0f, spO2 = 0f, skinTempCelsius = 0f,
                         accelX = 0f, accelY = 0f, accelZ = 0f,
                         timestamp = System.currentTimeMillis(),
                     )
@@ -170,6 +168,142 @@ object WhoopPacketDecoder {
             BatteryReading(percent = percent, charging = charging)
         } catch (e: Exception) {
             Log.e(TAG, "decodeBattery: ${e.message}")
+            null
+        }
+    }
+
+    // ── Optical / PPG data (type 0x2B, K=20/21) ──────────────────────────────
+
+    /**
+     * Raw optical sample from the Whoop PPG sensor.
+     * ADC values are 24-bit unsigned LE. Zero means channel not present.
+     */
+    data class OpticalSample(val green: Int, val red: Int, val ir: Int)
+
+    /**
+     * Decode K=20 or K=21 optical packet from startPhysiologyCapture stream.
+     * Format: standard 13-byte realtime header + N × [green:3B][red:3B][ir:3B] triplets.
+     * Returns null if data is too short or contains only zeros (optical not yet active).
+     * Log the raw bytes if decode fails so the format can be confirmed from Logcat.
+     */
+    fun decodeOptical(body: ByteArray): List<OpticalSample>? {
+        if (body.size < 22) {
+            Log.d(TAG, "optical pkt too short: ${body.size}B k=${body.getOrElse(1){0}.toInt() and 0xFF}")
+            return null
+        }
+        // Dump first 80 bytes of every K=20 body for temperature investigation
+        if ((body.getOrElse(1) { 0 }.toInt() and 0xFF) == 0x14) {
+            val hex80 = body.take(80).joinToString("") { "%02x".format(it) }
+            Log.i("WhoopTemp", "K20_BODY size=${body.size} first80=$hex80")
+        }
+        val samples = mutableListOf<OpticalSample>()
+        var offset = 13
+        while (offset + 8 < body.size) {
+            val g = read24BitLE(body, offset)
+            val r = read24BitLE(body, offset + 3)
+            val ir = read24BitLE(body, offset + 6)
+            if (g > 0 || r > 0 || ir > 0) samples.add(OpticalSample(g, r, ir))
+            offset += 9
+        }
+        if (samples.isEmpty()) {
+            val hex = body.drop(13).take(18).joinToString("") { "%02x".format(it) }
+            Log.d(TAG, "optical: no samples k=${body.getOrElse(1){0}.toInt() and 0xFF} data=$hex")
+            return null
+        }
+        val k = body.getOrElse(1) { 0 }.toInt() and 0xFF
+        val gRange = samples.maxOf { it.green } - samples.minOf { it.green }
+        val rRange = samples.maxOf { it.red }   - samples.minOf { it.red }
+        val iRange = samples.maxOf { it.ir }    - samples.minOf { it.ir }
+        val gMean  = samples.map { it.green }.average().toInt()
+        val rMean  = samples.map { it.red   }.average().toInt()
+        val iMean  = samples.map { it.ir    }.average().toInt()
+        Log.d(TAG, "optical K=$k ${samples.size} samples | " +
+              "g: mean=$gMean range=$gRange | " +
+              "r: mean=$rMean range=$rRange | " +
+              "ir: mean=$iMean range=$iRange")
+        return samples
+    }
+
+    fun read24BitLE(b: ByteArray, off: Int): Int {
+        if (off + 2 >= b.size) return 0
+        return (b[off].toInt() and 0xFF) or
+               ((b[off + 1].toInt() and 0xFF) shl 8) or
+               ((b[off + 2].toInt() and 0xFF) shl 16)
+    }
+
+    // ── R17 "optical or labrador filtered" (K=17) ────────────────────────────
+    //
+    // Goose Rust core (protocol.rs parse_r17_body_summary) defines the layout:
+    //   body[0]    = 0x28 (PKT_REALTIME_DATA)
+    //   body[1]    = 17   (K=17)
+    //   body[13..14] = flags (u16 LE)
+    //   body[24..25] = sample_count (u16 LE)
+    //   body[26..]   = RR interval samples, each i16 LE in milliseconds
+    //
+    // goose hrv_plan_from_row (metric_features.rs) exclusively uses R17 packets
+    // for HRV — NOT 0x2A37 or K=10. Accepted range: 300–2000 ms.
+    //
+    fun decodeR17RrIntervals(body: ByteArray): List<Float> {
+        if (body.size < 27) {
+            Log.d(TAG, "decodeR17: too short ${body.size}B")
+            return emptyList()
+        }
+        val sampleCount = readU16LE(body, 24).coerceIn(0, 32)
+        val rrs = mutableListOf<Float>()
+        for (i in 0 until sampleCount) {
+            val off = 26 + i * 2
+            if (off + 1 >= body.size) break
+            val v = readS16LE(body, off).toInt()
+            if (v in 300..2000) rrs.add(v.toFloat())
+        }
+        val hex = body.take(30).joinToString("") { "%02x".format(it) }
+        Log.d(TAG, "decodeR17: sampleCount=$sampleCount valid=${rrs.size} body=$hex")
+        return rrs
+    }
+
+    // ── Standard BLE Heart Rate Service (0x2A37) ─────────────────────────────
+    //
+    // Parses the standard Bluetooth HRS characteristic to get HR and RR intervals
+    // at proper ~1ms resolution. Port of goose Swift parseStandardHeartRateMeasurement.
+    //
+    // Characteristic format (BT spec Vol 3, Part G, 3.106):
+    //   byte 0    flags
+    //     bit 0   HR format: 0 = 1-byte UINT8, 1 = 2-byte UINT16 LE
+    //     bit 3   energy expended present
+    //     bit 4   RR intervals present (1 or more UINT16 LE, units: 1/1024 s)
+    //   byte 1(+) heart rate value
+    //   [2 bytes] energy expended (if bit 3 set)
+    //   [2 bytes × N] RR intervals (if bit 4 set), each × 1000/1024 = ms
+    //
+    fun decodeStandardHrs(value: ByteArray): BiometricReading? {
+        return try {
+            if (value.size < 2) return null
+            val flags = value[0].toInt() and 0xFF
+            var offset = 1
+            val bpm: Int
+            if (flags and 0x01 == 0) {
+                bpm = value[offset].toInt() and 0xFF
+                offset += 1
+            } else {
+                if (value.size < offset + 2) return null
+                bpm = readU16LE(value, offset)
+                offset += 2
+            }
+            if (bpm !in 20..250) return null
+            if (flags and 0x08 != 0) offset += 2  // skip energy expended
+            var rrMs = 0f
+            if (flags and 0x10 != 0 && value.size >= offset + 2) {
+                val raw = readU16LE(value, offset)
+                val ms = raw * 1000f / 1024f
+                if (ms in 300f..2000f) rrMs = ms
+            }
+            BiometricReading(
+                heartRate = bpm, rrIntervalMs = rrMs, spO2 = 0f, skinTempCelsius = 0f,
+                accelX = 0f, accelY = 0f, accelZ = 0f,
+                timestamp = System.currentTimeMillis(),
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "decodeStandardHrs: ${e.message}")
             null
         }
     }

@@ -29,42 +29,81 @@ class WhoopBleHandler(
         Log.d(TAG, "frame OK type=0x${"%02x".format(body[0])} size=${body.size}")
         when (body[0]) {
             WhoopGattProfile.PKT_REALTIME_DATA -> {
-                WhoopPacketDecoder.decodeRealtime(body)?.let { reading ->
-                    buffers.ingestReading(reading)
-                    if (reading.heartRate > 0) WhoopPlugin.emitHeartRate(reading.heartRate)
+                val packetK = if (body.size > 1) body[1].toInt() and 0xFF else 0
+                if (packetK == 17) {
+                    // R17 "optical or labrador filtered" — the exclusive source of RR intervals.
+                    // goose hrv_plan_from_row (metric_features.rs) only matches R17; K=10 and
+                    // 0x2A37 never produce valid HRV in the Whoop 5 optical pipeline.
+                    val rrs = WhoopPacketDecoder.decodeR17RrIntervals(body)
+                    for (rr in rrs) {
+                        buffers.ingestReading(BiometricReading(
+                            heartRate = buffers.latestHr,
+                            rrIntervalMs = rr,
+                            spO2 = 0f, skinTempCelsius = 0f,
+                            accelX = 0f, accelY = 0f, accelZ = 0f,
+                            timestamp = System.currentTimeMillis(),
+                        ))
+                    }
+                } else {
+                    WhoopPacketDecoder.decodeRealtime(body)?.let { reading ->
+                        buffers.ingestReading(reading)
+                        if (reading.heartRate > 0) WhoopPlugin.emitHeartRate(reading.heartRate)
+                    }
                 }
             }
             WhoopGattProfile.PKT_IMU_STREAM,
             WhoopGattProfile.PKT_REALTIME_RAW -> {
-                // K=10 raw motion frames embed HR at body[17] — same layout as PKT_REALTIME_DATA K=10
-                val embeddedHr = if (body.size >= 18) body[17].toInt() and 0xFF else 0
-                val embeddedRr = if (body.size >= 20) {
-                    val raw = WhoopPacketDecoder.readU16LE(body, 18)
-                    val ms = raw * 1000f / 1024f
-                    if (ms in 200f..2000f) ms else 0f
-                } else 0f
-                WhoopPacketDecoder.decodeImu(body)?.let { accel ->
-                    buffers.ingestReading(BiometricReading(
-                        heartRate = if (embeddedHr in 20..250) embeddedHr else buffers.latestHr,
-                        rrIntervalMs = embeddedRr,
-                        spO2 = 0f, skinTempCelsius = 0f,
-                        accelX = accel.first, accelY = accel.second, accelZ = accel.third,
-                        timestamp = System.currentTimeMillis(),
-                    ))
+                val packetK = if (body.size > 1) body[1].toInt() and 0xFF else 0
+                if (packetK == 0x14 || packetK == 0x15) {
+                    // K=20 (persistent_r20) / K=21 (persistent_r21): optical PPG stream
+                    WhoopPacketDecoder.decodeOptical(body)?.let { samples ->
+                        buffers.ingestOptical(samples)
+                        // K=20 IR channel drives PPG peak detection for RR intervals.
+                        // K=21 excluded: different gain/offset would corrupt the normalized signal.
+                        if (packetK == 0x14) buffers.ingestPpgForRr(samples)
+                    }
+                } else {
+                    // K=10 and others: IMU/motion stream with embedded HR.
+                    // Bytes 18-19 are NOT RR intervals in motion packets — they follow
+                    // an N×256+1 counter pattern that produces garbage RMSSD values.
+                    // Real RR intervals come from the standard BLE 0x2A37 characteristic.
+                    val embeddedHr = if (body.size >= 18) body[17].toInt() and 0xFF else 0
+                    WhoopPacketDecoder.decodeImu(body)?.let { accel ->
+                        buffers.ingestReading(BiometricReading(
+                            heartRate = if (embeddedHr in 20..250) embeddedHr else buffers.latestHr,
+                            rrIntervalMs = 0f,
+                            spO2 = 0f, skinTempCelsius = 0f,
+                            accelX = accel.first, accelY = accel.second, accelZ = accel.third,
+                            timestamp = System.currentTimeMillis(),
+                        ))
+                    }
+                    if (embeddedHr in 20..250) WhoopPlugin.emitHeartRate(embeddedHr)
                 }
-                if (embeddedHr in 20..250) WhoopPlugin.emitHeartRate(embeddedHr)
             }
             WhoopGattProfile.PKT_HISTORICAL -> {
                 if (dumpInProgress) histBuffer.add(raw)
             }
             WhoopGattProfile.PKT_METADATA -> handleMetadata(body)
+            WhoopGattProfile.PKT_EVENT -> {
+                // 0x30 — device-initiated events (sensor readings, alerts, state changes).
+                // Logging full body to discover temperature and other sensor packets.
+                val hex = body.joinToString("") { "%02x".format(it) }
+                Log.i("WhoopTemp", "PKT_EVENT size=${body.size} hex=$hex")
+            }
             WhoopGattProfile.PKT_COMMAND_RESPONSE -> {
                 if (body.size > 2 && body[2] == WhoopGattProfile.CMD_GET_BATTERY)
                     WhoopPacketDecoder.decodeBattery(body)?.let { buffers.ingestBattery(it) }
-                else
-                    Log.v(TAG, "cmd_resp cmd=0x${if(body.size>2)"%02x".format(body[2]) else "?"} size=${body.size}")
+                else {
+                    // Log ALL command responses fully — temperature may come as a cmd response
+                    val cmd = if (body.size > 2) "0x%02x".format(body[2]) else "?"
+                    val hex = body.take(32).joinToString("") { "%02x".format(it) }
+                    Log.i("WhoopTemp", "CMD_RESP cmd=$cmd size=${body.size} hex=$hex")
+                }
             }
-            else -> Log.w(TAG, "unknown type=0x${"%02x".format(body[0])} hex=${body.take(16).joinToString(""){"%02x".format(it)}}")
+            else -> {
+                val hex = body.take(32).joinToString("") { "%02x".format(it) }
+                Log.i("WhoopTemp", "UNKNOWN type=0x${"%02x".format(body[0])} size=${body.size} hex=$hex")
+            }
         }
     }
 

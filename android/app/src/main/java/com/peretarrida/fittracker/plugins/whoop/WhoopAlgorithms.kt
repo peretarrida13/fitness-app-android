@@ -100,22 +100,30 @@ object WhoopAlgorithms {
         accel: Triple<Float, Float, Float>,
         hr: Int,
         rrInterval: Float,
-        @Suppress("UNUSED_PARAMETER") prevStage: SleepStage,
+        prevStage: SleepStage,
     ): SleepStage {
         val mag = sqrt(
             accel.first.pow(2) + accel.second.pow(2) + accel.third.pow(2)
         )
-        // Remove gravity component (assume 1g baseline)
         val dynamicMag = abs(mag - 1f)
         val isStill = dynamicMag < STILLNESS_THRESHOLD
-        val lowHr = hr in 40..65
-        val highRrVariability = rrInterval > 900f  // high RR = high HRV → REM indicator
-        return when {
-            !isStill -> SleepStage.AWAKE
-            !lowHr   -> SleepStage.LIGHT
-            highRrVariability -> SleepStage.REM
-            else -> SleepStage.DEEP
-        }
+
+        // Require movement to confirm AWAKE — single still sample keeps previous stage.
+        if (!isStill) return SleepStage.AWAKE
+
+        // Stricter HR threshold: 40–58 bpm. Awake-but-resting HR is typically >58,
+        // so values in 59–65 are not reliable sleep indicators and default to AWAKE.
+        if (hr !in 40..58) return SleepStage.AWAKE
+
+        // Only classify non-AWAKE stages when already in a sleep state (hysteresis)
+        // or when RR interval confirms very slow HR (>1030ms ≈ <58 bpm with variation).
+        // This prevents brief still+slow-HR moments during wakefulness from triggering sleep.
+        val inSleepContext = prevStage != SleepStage.AWAKE
+        val verySlowHr = rrInterval in 950f..1500f  // 40–63 bpm, valid physiological range
+        if (!inSleepContext && !verySlowHr) return SleepStage.AWAKE
+
+        // REM: RR interval elevated above resting (>1100ms ≈ <55 bpm with high variability)
+        return if (rrInterval > 1100f) SleepStage.REM else SleepStage.DEEP
     }
 
     // ── Sleep score ───────────────────────────────────────────────────────────
@@ -143,8 +151,100 @@ object WhoopAlgorithms {
 
     /** 5-minute rolling average; rejects physiologically impossible values. */
     fun calculateSpO2Average(readings: List<Float>): Float {
-        val valid = readings.filter { it in 85f..100f }
+        val valid = readings.filter { it in 90f..100f }
         return if (valid.isEmpty()) 0f else valid.average().toFloat()
+    }
+
+    /**
+     * SpO2 from raw red/IR PPG ADC values via Beer-Lambert law.
+     * R = (AC_red/DC_red) / (AC_ir/DC_ir).
+     * Calibration: SpO2 = -45.060*R² + 30.354*R + 94.845 (Maxim AN6166).
+     * Returns null if data is insufficient or result is physiologically impossible.
+     */
+    fun computeSpO2(redSamples: List<Float>, irSamples: List<Float>): Float? {
+        if (redSamples.size < 10 || irSamples.size < 10) return null
+        val redDc = redSamples.average().toFloat()
+        val irDc  = irSamples.average().toFloat()
+        if (redDc <= 0f || irDc <= 0f) return null
+        val redAc = redSamples.max() - redSamples.min()
+        val irAc  = irSamples.max()  - irSamples.min()
+        if (irAc <= 0f) return null
+        val r = (redAc / redDc) / (irAc / irDc)
+        val spo2 = -45.060f * r * r + 30.354f * r + 94.845f
+        return if (spo2 in 90f..100f) spo2 else null
+    }
+
+    // ── PPG peak detection (RR intervals from K=20 optical IR channel) ────────
+
+    /**
+     * Detects cardiac peaks in a PPG IR signal and returns RR intervals.
+     * z-score normalise → 5-point moving-average smooth → local maxima >0.3σ
+     * with 300ms minimum gap. Only peaks after lastPeakTimeMs are new;
+     * RR = timestamp difference between consecutive accepted peaks.
+     */
+    fun detectPpgRrIntervals(
+        irSamples: List<Float>,
+        sampleTimes: List<Long>,
+        lastPeakTimeMs: Long,
+    ): List<Pair<Float, Long>> {
+        if (irSamples.size < 50 || irSamples.size != sampleTimes.size) return emptyList()
+        val mean = irSamples.average().toFloat()
+        val variance = irSamples.map { (it - mean) * (it - mean) }.average().toFloat()
+        val std = sqrt(variance).coerceAtLeast(1f)
+        val normalized = irSamples.map { (it - mean) / std }
+        val smoothed = normalized.indices.map { i ->
+            val lo = maxOf(0, i - 2); val hi = minOf(normalized.size - 1, i + 2)
+            normalized.subList(lo, hi + 1).average().toFloat()
+        }
+        val peaks = mutableListOf<Int>()
+        for (i in 2 until smoothed.size - 2) {
+            if (smoothed[i] < 0.3f) continue
+            if (smoothed[i] <= smoothed[i - 1] || smoothed[i] <= smoothed[i - 2]) continue
+            if (smoothed[i] <= smoothed[i + 1] || smoothed[i] <= smoothed[i + 2]) continue
+            if (peaks.isNotEmpty() && sampleTimes[i] - sampleTimes[peaks.last()] < 300L) {
+                if (smoothed[i] > smoothed[peaks.last()]) peaks[peaks.size - 1] = i
+            } else {
+                peaks.add(i)
+            }
+        }
+        val result = mutableListOf<Pair<Float, Long>>()
+        var prevPeakMs = lastPeakTimeMs
+        for (peakIdx in peaks) {
+            val t = sampleTimes[peakIdx]
+            if (t <= lastPeakTimeMs) { prevPeakMs = t; continue }
+            if (prevPeakMs > 0L) {
+                val rr = (t - prevPeakMs).toFloat()
+                if (rr in 300f..2000f) result.add(Pair(rr, t))
+            }
+            prevPeakMs = t
+        }
+        return result
+    }
+
+    // ── Respiratory rate (RSA autocorrelation) ────────────────────────────────
+
+    /**
+     * Estimate respiratory rate (breaths/min) from RR intervals via RSA.
+     * Breathing modulates RR intervals at 0.15–0.4 Hz (respiratory sinus arrhythmia).
+     * Autocorrelation finds the dominant oscillation lag; lag × mean_RR = cycle duration.
+     * Requires ≥ 32 valid RR intervals (~30s at rest). Returns null if insufficient data.
+     */
+    fun estimateRespiratoryRate(rrIntervalsMs: List<Float>): Float? {
+        val valid = rrIntervalsMs.filter { it in 300f..2000f }
+        if (valid.size < 32) return null
+        val rr = valid.takeLast(minOf(valid.size, 120))
+        val mean = rr.average().toFloat()
+        val detrended = rr.map { it - mean }
+        // Lag range 2–20 beats covers ~3–30 breaths/min at typical resting HR
+        var bestLag = -1; var bestCorr = Float.MIN_VALUE
+        for (lag in 2..minOf(20, rr.size / 3)) {
+            var corr = 0f
+            for (i in 0 until rr.size - lag) corr += detrended[i] * detrended[i + lag]
+            if (corr > bestCorr) { bestCorr = corr; bestLag = lag }
+        }
+        if (bestLag < 2 || bestCorr <= 0f) return null
+        val rpm = 60_000f / (bestLag * mean)
+        return if (rpm in 6f..30f) (rpm * 10).toInt() / 10f else null
     }
 
     // ── Label helpers ─────────────────────────────────────────────────────────

@@ -23,6 +23,7 @@ export interface WhoopSnapshot {
   deviceConnected: boolean
   sessionStartTime: string
   rrIntervalsRaw: number[]
+  respiratoryRate: number | null
 }
 
 export interface ConnectionStatus {

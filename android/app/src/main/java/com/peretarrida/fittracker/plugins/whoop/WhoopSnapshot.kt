@@ -47,6 +47,7 @@ data class WhoopSnapshot(
     val deviceConnected: Boolean,
     val sessionStartTime: String,       // ISO-8601 UTC, when BLE connected
     val rrIntervalsRaw: List<Float>,    // last 300 RR intervals for server HRV cross-check
+    val respiratoryRate: Float?,        // breaths/min via RSA autocorrelation, null if < 32 RR intervals
 )
 
 /** Entry from the historical data dump (type 0x2F packet). */

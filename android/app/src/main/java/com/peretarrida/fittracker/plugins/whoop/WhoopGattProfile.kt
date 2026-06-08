@@ -68,7 +68,7 @@ object WhoopGattProfile {
     val COMMAND_IDS = listOf(COMMAND_V1, COMMAND_V2)
 
     // ── Railway endpoint ──────────────────────────────────────────────────────
-    const val RAILWAY_BASE_URL = "https://YOUR_RAILWAY_URL.railway.app"
+    const val RAILWAY_BASE_URL = "https://web-production-eaacf.up.railway.app"
     const val INGEST_PATH = "/ingest"
 
     // ── Frame constants ───────────────────────────────────────────────────────

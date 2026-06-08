@@ -28,6 +28,15 @@ class WhoopBleBuffers {
     val hrBuffer   = ArrayDeque<Int>(3600)       // 1 sample/sec × 60 min
     val accelBuf   = ArrayDeque<Triple<Float,Float,Float>>(300)
     val spO2Buf    = ArrayDeque<Float>(60)
+    // Optical PPG buffers — 100 samples each (~5s at 20 Hz)
+    val redBuf     = ArrayDeque<Float>(100)
+    val irBuf      = ArrayDeque<Float>(100)
+
+    // PPG-to-RR detection state (K=20 IR channel, ~500 samples ≈ 6s at 84 Hz)
+    private val ppgIrBuf        = ArrayDeque<Float>(500)
+    private val ppgTimeBuf      = ArrayDeque<Long>(500)
+    private var ppgLastPeakMs   = 0L
+    private var ppgLastPacketMs = 0L
 
     // ── Persistent state ──────────────────────────────────────────────────────
     var battery = BatteryReading(percent = 0, charging = false)
@@ -72,6 +81,44 @@ class WhoopBleBuffers {
 
     fun ingestBattery(b: BatteryReading) { battery = b }
 
+    fun ingestOptical(samples: List<WhoopPacketDecoder.OpticalSample>) {
+        for (s in samples) {
+            if (s.red > 0)  addCapped(redBuf, s.red.toFloat(), 100)
+            if (s.ir  > 0)  addCapped(irBuf,  s.ir.toFloat(),  100)
+        }
+        // Recompute SpO2 whenever we have enough optical data
+        WhoopAlgorithms.computeSpO2(redBuf.toList(), irBuf.toList())
+            ?.let { spo2 -> addCapped(spO2Buf, spo2, 60) }
+    }
+
+    fun ingestPpgForRr(samples: List<WhoopPacketDecoder.OpticalSample>) {
+        val nowMs = System.currentTimeMillis()
+        val validIr = samples.filter { it.ir > 0 }
+        if (validIr.isEmpty()) return
+        val packetDurationMs = if (ppgLastPacketMs > 0L)
+            (nowMs - ppgLastPacketMs).coerceIn(50L, 3000L)
+        else
+            (validIr.size * 1000L / 84L).coerceIn(500L, 3000L)
+        val batchStartMs = nowMs - packetDurationMs
+        val samplePeriodMs = packetDurationMs.toDouble() / validIr.size
+        for ((idx, s) in validIr.withIndex()) {
+            val t = batchStartMs + (idx * samplePeriodMs).toLong()
+            if (ppgIrBuf.size >= 500) { ppgIrBuf.removeFirst(); ppgTimeBuf.removeFirst() }
+            ppgIrBuf.addLast(s.ir.toFloat())
+            ppgTimeBuf.addLast(t)
+        }
+        ppgLastPacketMs = nowMs
+        if (ppgIrBuf.size < 168) return
+        val newRrs = WhoopAlgorithms.detectPpgRrIntervals(
+            ppgIrBuf.toList(), ppgTimeBuf.toList(), ppgLastPeakMs
+        )
+        if (newRrs.isNotEmpty()) {
+            for ((rrMs, _) in newRrs) addCapped(rrBuffer, rrMs, 300)
+            ppgLastPeakMs = newRrs.last().second
+            Log.d("WhoopBuffers", "PPG RR: ${newRrs.size} new [${newRrs.first().first.toInt()}..${newRrs.last().first.toInt()}]ms rrBuf=${rrBuffer.size}")
+        }
+    }
+
     fun tickSleepMinute() {
         val key = currentSleepStage.name.lowercase()
         sleepMinutes[key] = (sleepMinutes[key] ?: 0) + 1
@@ -93,8 +140,11 @@ class WhoopBleBuffers {
             addCapped(rmssdHistory, rmssd, 8640)
             if (rmssdHistory.size > 10) rmssdBaseline = rmssdHistory.average().toFloat()
         }
-        val restingHr = hrList.filter { it < 80 }.average().toFloat()
-            .takeIf { !it.isNaN() } ?: hrBaseline
+        // goose lowQuartileMeanBPM: average the lowest 25% of HR samples.
+        val restingHr = hrList.sorted().let { sorted ->
+            val n = (sorted.size / 4).coerceAtLeast(1)
+            sorted.take(n).average().toFloat()
+        }.takeIf { !it.isNaN() } ?: hrBaseline
         val sleepScore = WhoopAlgorithms.calculateSleepScore(
             deepMinutes = sleepMinutes["deep"] ?: 0,
             remMinutes  = sleepMinutes["rem"] ?: 0,
@@ -107,6 +157,7 @@ class WhoopBleBuffers {
             WhoopAlgorithms.calculateRecoveryScore(rmssd, rmssdBaseline, restingHr, hrBaseline, sleepScore.toFloat())
         else null
         val strain = WhoopAlgorithms.calculateStrain(hrList, hrList.size / 60)
+        val respiratoryRate = WhoopAlgorithms.estimateRespiratoryRate(rrList)
         val mag = latestAccel.let { (x,y,z) -> sqrt(x*x + y*y + z*z) }
         val iso = DateTimeFormatter.ISO_INSTANT.format(Instant.now().atZone(ZoneOffset.UTC))
         val sessionIso = DateTimeFormatter.ISO_INSTANT.format(sessionStart.atZone(ZoneOffset.UTC))
@@ -122,6 +173,7 @@ class WhoopBleBuffers {
             batteryPercent = battery.percent, batteryCharging = battery.charging,
             deviceConnected = true, sessionStartTime = sessionIso,
             rrIntervalsRaw = rrList.takeLast(300),
+            respiratoryRate = respiratoryRate,
         )
     }
 

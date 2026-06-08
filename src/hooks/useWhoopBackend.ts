@@ -22,6 +22,10 @@ export interface BackendToday {
   sleep: Record<string, number> | null
   battery: { percent: number; charging: boolean; estimated_days_remaining: number } | null
   heart_rate: number | null
+  rhr: number | null
+  respiratory_rate: number | null
+  spo2: number | null
+  skin_temp_delta: number | null
   stress: { score: number; level: string } | null
   energy: { kcal: number } | null
   stale: boolean

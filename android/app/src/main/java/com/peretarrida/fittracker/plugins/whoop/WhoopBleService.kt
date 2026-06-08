@@ -419,10 +419,15 @@ class WhoopBleService : Service() {
         bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_SEND_R10_R11_REALTIME, byteArrayOf(0x01)) }, 550L)
         // Read battery now — no GATT op is pending
         bleH.postDelayed({ readBattery() }, 800L)
+        // Goose startPhysiologyCapture steps 3–7: enables optical (PPG) streaming for SpO2/temp
+        bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_TOGGLE_IMU_MODE,        WhoopGattProfile.PAYLOAD_REVISION_ENABLE) }, 900L)
+        bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_TOGGLE_PERSISTENT_R21,  WhoopGattProfile.PAYLOAD_REVISION_ENABLE) }, 1_100L)
+        bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_ENABLE_OPTICAL_DATA,    WhoopGattProfile.PAYLOAD_REVISION_ENABLE) }, 1_300L)
+        bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_TOGGLE_OPTICAL_MODE,    WhoopGattProfile.PAYLOAD_REVISION_ENABLE) }, 1_500L)
+        bleH.postDelayed({ sendCmd(WhoopGattProfile.CMD_TOGGLE_PERSISTENT_R20,  WhoopGattProfile.PAYLOAD_REVISION_ENABLE) }, 1_700L)
         // Safety net: explicitly re-subscribe to 2A37 in case the CCCD was skipped
-        // during the notification queue (e.g., descriptor not found in cache).
-        bleH.postDelayed({ ensureHrSubscribed() }, 1_500L)
-        bleH.postDelayed({ pktH.dumpInProgress = false; sendCmd(WhoopGattProfile.CMD_SEND_HISTORICAL, byteArrayOf(0x00)) }, 2_000L)
+        bleH.postDelayed({ ensureHrSubscribed() }, 2_000L)
+        bleH.postDelayed({ pktH.dumpInProgress = false; sendCmd(WhoopGattProfile.CMD_SEND_HISTORICAL, byteArrayOf(0x00)) }, 2_500L)
         // Fire an early snapshot 30s after connect — historical dump fills buffers within ~10s
         scope.launch { delay(30_000L); if (state is WhoopConnectionState.Connected) { buffers.computeAndUpload(); updateNotif() } }
     }
